@@ -14,12 +14,15 @@ apiKey: "sk-proj-fn6jVEc09CCheyPDr8AnVA-X4-teH3VGX27EpQ34wuuNPguzTeJ97DPpYXBZrie
 })
 
 const client = new Client({
-authStrategy: new LocalAuth(),
-puppeteer: {
-headless: true,
-executablePath: '/usr/bin/chromium-browser'
-args: ['--no-sandbox','--disable-setuid-sandbox'],
-}
+  authStrategy: new LocalAuth(),
+  puppeteer: {
+    headless: true,
+    executablePath: '/usr/bin/chromium-browser',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox'
+    ]
+  }
 });
 
 client.on('qr', qr => {
@@ -216,5 +219,6 @@ client.initialize()
 
 
 module.exports = { client }
+
 
 
