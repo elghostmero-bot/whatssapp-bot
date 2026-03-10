@@ -225,10 +225,11 @@ app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
 
-client.initialize()
+client.initialize();
 
 
 module.exports = { client }
+
 
 
 
