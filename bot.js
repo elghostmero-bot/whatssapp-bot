@@ -3,9 +3,9 @@ const app = express()
 
 app.use(express.json({ limit: "20mb" }))
 
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js')
-const qrcode = require('qrcode-terminal')
-const fs = require('fs')
+const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js")
+const qrcode = require("qrcode-terminal")
+const fs = require("fs")
 const OpenAI = require("openai")
 
 // قراءة بيانات الصالون
@@ -22,26 +22,28 @@ const client = new Client({
   puppeteer: {
     headless: true,
     args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu'
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu"
     ]
   }
 })
 
-client.on('qr', qr => {
+// QR
+client.on("qr", qr => {
   qrcode.generate(qr,{small:true})
 })
 
-client.on('ready', () => {
+// Ready
+client.on("ready", () => {
   console.log("WhatsApp Bot Ready")
 })
 
 // قراءة الردود
 function getReplies(){
   try{
-    return JSON.parse(fs.readFileSync('replies.json'))
+    return JSON.parse(fs.readFileSync("replies.json"))
   }catch{
     return []
   }
@@ -63,7 +65,8 @@ text = text.replace(/\bو([^\s]+)/g,"و $1")
 return text
 }
 
-client.on('message', async message => {
+// استقبال الرسائل
+client.on("message", async message => {
 
 if (!message.body) return
 
@@ -74,9 +77,11 @@ if (message.from === "status@broadcast") return
 if (message.from.includes("@g.us")) return
 
 let msg = normalizeText(message.body)
+
 let words = msg.split(/\s+/)
 
 const replies = getReplies()
+
 let responses = []
 
 for(const item of replies){
@@ -154,6 +159,7 @@ console.log("AI ERROR:",err.message)
 
 }
 
+// حفظ الرسائل غير المفهومة
 const unknown = message.body
 
 let data = []
@@ -166,4 +172,70 @@ data=[]
 
 data.push({
 msg:unknown,
-date:new Date
+date:new Date().toISOString()
+})
+
+fs.writeFileSync("unknown.json",JSON.stringify(data,null,2))
+
+})
+
+// إرسال الفواتير
+app.post("/send-invoice", async (req,res)=>{
+
+let { bride, groom, imageBase64 } = req.body
+
+function formatNumber(num){
+  num = num.replace(/\D/g,"")
+  if(num.startsWith("0")){
+    num = "20" + num.slice(1)
+  }
+  return num
+}
+
+bride = formatNumber(bride)
+groom = formatNumber(groom)
+
+try{
+
+const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "")
+
+const media = new MessageMedia(
+"image/jpeg",
+base64Data,
+"invoice.jpg"
+)
+
+await client.sendMessage(bride+"@c.us", media,{
+caption:"دي الفاتورة الخاصة بالحجز في Samia Makeup Artist 💄"
+})
+
+await client.sendMessage(groom+"@c.us", media,{
+caption:"دي الفاتورة الخاصة بالحجز في Samia Makeup Artist 💄"
+})
+
+res.send("sent")
+
+}catch(err){
+
+console.log(err)
+
+res.status(500).send("error")
+
+}
+
+})
+
+// الصفحة الرئيسية
+app.get("/", (req,res)=>{
+res.send("WhatsApp bot is running")
+})
+
+const PORT = process.env.PORT || 3000
+
+app.listen(PORT, ()=>{
+console.log("Server running on port " + PORT)
+})
+
+client.initialize()
+
+module.exports = { client }
