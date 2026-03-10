@@ -5,7 +5,7 @@ app.use(express.json({ limit: "20mb" }))
 const { Client, LocalAuth } = require('whatsapp-web.js')
 const qrcode = require('qrcode-terminal')
 const fs = require('fs')
-const OpenAI = require("openai")
+const OpenAI = require("OPENAI_API_KEY")
 
 const salonData = fs.readFileSync("salon-data.txt","utf8")
 
@@ -224,6 +224,7 @@ client.initialize();
 
 
 module.exports = { client }
+
 
 
 
