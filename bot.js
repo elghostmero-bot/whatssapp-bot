@@ -12,7 +12,6 @@ const OpenAI = require("openai")
 const salonData = fs.readFileSync("salon-data.txt","utf8")
 
 // تشغيل OpenAI
-require('dotenv').config()
 console.log("OPENAI KEY:", process.env.OPENAI_API_KEY)
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -241,5 +240,6 @@ console.log("Server running on port " + PORT)
 client.initialize()
 
 module.exports = { client }
+
 
 
