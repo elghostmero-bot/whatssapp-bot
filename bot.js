@@ -18,7 +18,6 @@ authStrategy: new LocalAuth(),
 puppeteer: {
 headless: true,
 args: ['--no-sandbox','--disable-setuid-sandbox'],
-protocolTimeout: 120000
 }
 })
 
@@ -213,5 +212,6 @@ console.log("Invoice API running")
 })
 
 client.initialize()
+
 
 module.exports = { client }
