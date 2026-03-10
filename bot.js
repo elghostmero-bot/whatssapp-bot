@@ -20,7 +20,7 @@ const openai = new OpenAI({
 // تشغيل واتساب
 const client = new Client({
   authStrategy: new LocalAuth(),
-  clientId: "samia-bot"
+  clientId: "samia-bot",
   puppeteer: {
     headless: true,
     args: [
@@ -250,6 +250,7 @@ console.log("Server running on port " + PORT)
 client.initialize()
 
 module.exports = { client }
+
 
 
 
