@@ -24,7 +24,7 @@ const client = new Client({
       '--disable-gpu'
     ]
   }
-});
+})
 
 client.on('qr', qr => {
 qrcode.generate(qr,{small:true})
@@ -225,6 +225,7 @@ client.initialize();
 
 
 module.exports = { client }
+
 
 
 
