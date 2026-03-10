@@ -20,7 +20,7 @@ headless: true,
 executablePath: '/usr/bin/chromium-browser'
 args: ['--no-sandbox','--disable-setuid-sandbox'],
 }
-})
+});
 
 client.on('qr', qr => {
 qrcode.generate(qr,{small:true})
@@ -216,4 +216,5 @@ client.initialize()
 
 
 module.exports = { client }
+
 
