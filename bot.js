@@ -213,9 +213,6 @@ try{
 
 })
 
-app.listen(3001,()=>{
-console.log("Invoice API running")
-})
 app.get("/", (req, res) => {
   res.send("WhatsApp bot is running");
 });
@@ -229,6 +226,7 @@ client.initialize();
 
 
 module.exports = { client }
+
 
 
 
