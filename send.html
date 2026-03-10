@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Send WhatsApp Message</title>
+
+<style>
+
+body{
+font-family: Arial;
+background:#f5f5f5;
+padding:40px;
+}
+
+.box{
+background:white;
+padding:25px;
+border-radius:10px;
+width:500px;
+margin:auto;
+}
+
+input,textarea{
+width:100%;
+padding:10px;
+margin-top:5px;
+margin-bottom:15px;
+font-size:16px;
+}
+
+textarea{
+height:120px;
+}
+
+button{
+padding:12px 25px;
+font-size:16px;
+cursor:pointer;
+background:#25D366;
+border:none;
+color:white;
+border-radius:5px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="box">
+
+<h2>Send Message</h2>
+
+رقم العريس
+<input id="groom">
+
+رقم العروسة
+<input id="bride">
+
+الرسالة
+<textarea id="message"></textarea>
+
+صورة (اختياري)
+<input type="file" id="image">
+
+<button onclick="send()">Send</button>
+
+</div>
+
+<script>
+
+function send(){
+
+const groom = document.getElementById("groom").value
+const bride = document.getElementById("bride").value
+const message = document.getElementById("message").value
+
+const formData = new FormData()
+
+formData.append("groom", groom)
+formData.append("bride", bride)
+formData.append("message", message)
+
+const file = document.getElementById("image").files[0]
+
+if(file){
+formData.append("image", file)
+}
+
+fetch("/send-message",{
+method:"POST",
+body:formData
+})
+.then(r=>r.text())
+.then(res=>{
+alert("Message sent")
+})
+
+}
+
+</script>
+
+</body>
+
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Bot Control Panel</title>
+
+<style>
+
+body{
+font-family: Arial;
+padding:40px;
+background:#f5f5f5;
+}
+
+.box{
+background:white;
+padding:20px;
+border-radius:8px;
+margin-bottom:20px;
+}
+
+input,textarea{
+width:100%;
+padding:10px;
+font-size:16px;
+margin-top:5px;
+margin-bottom:15px;
+}
+
+textarea{
+height:120px;
+}
+
+button{
+padding:10px 20px;
+margin-right:10px;
+cursor:pointer;
+}
+
+.reply{
+border:1px solid #ddd;
+padding:15px;
+margin-top:15px;
+background:white;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="box">
+
+<h2>Add / Edit Reply</h2>
+
+Category
+<input id="category">
+
+Keywords (comma separated)
+<textarea id="keywords"></textarea>
+
+Reply
+<textarea id="reply"></textarea>
+
+<button onclick="save()">Save</button>
+
+</div>
+
+<h2>Replies</h2>
+
+<div id="list"></div>
+
+<h2>Unknown Questions</h2>
+
+<div id="unknown"></div>
+
+<script>
+
+let editIndex = null
+
+function load(){
+
+fetch('/api/replies')
+.then(r=>r.json())
+.then(data=>{
+
+let html=""
+
+data.forEach((item,i)=>{
+
+html += `
+<div class="reply">
+
+<b>Category:</b> ${item.category || ""}<br><br>
+
+<b>Keywords:</b><br>
+${(item.keywords || []).join(", ")}<br><br>
+
+<b>Reply:</b><br>
+${item.reply || ""}<br><br>
+
+<button onclick="edit(${i})">Edit</button>
+<button onclick="del(${i})">Delete</button>
+
+</div>
+`
+
+})
+
+document.getElementById("list").innerHTML = html
+
+})
+
+}
+
+function save(){
+
+const data = {
+category:document.getElementById("category").value.trim(),
+keywords:document.getElementById("keywords").value
+.split(",")
+.map(k=>k.trim())
+.filter(k=>k.length>0),
+reply:document.getElementById("reply").value.trim()
+}
+
+if(editIndex === null){
+
+fetch('/api/replies',{
+method:"POST",
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(data)
+})
+.then(()=>{
+clearForm()
+load()
+})
+
+}else{
+
+fetch('/api/replies/'+editIndex,{
+method:"PUT",
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(data)
+})
+.then(()=>{
+editIndex=null
+clearForm()
+load()
+})
+
+}
+
+}
+
+function edit(i){
+
+fetch('/api/replies')
+.then(r=>r.json())
+.then(data=>{
+
+const item = data[i]
+
+document.getElementById("category").value = item.category || ""
+document.getElementById("keywords").value = (item.keywords || []).join(",")
+document.getElementById("reply").value = item.reply || ""
+
+editIndex = i
+
+})
+
+}
+
+function del(i){
+
+fetch('/api/replies/'+i,{method:"DELETE"})
+.then(()=>load())
+
+}
+
+function clearForm(){
+
+document.getElementById("category").value=""
+document.getElementById("keywords").value=""
+document.getElementById("reply").value=""
+
+}
+
+function loadUnknown(){
+
+fetch('/api/unknown')
+.then(r=>r.json())
+.then(data=>{
+
+let html=""
+
+data.forEach(item=>{
+
+html += `
+<div class="reply">
+
+<b>Message:</b><br>
+${item.msg}
+
+</div>
+`
+
+})
+
+document.getElementById("unknown").innerHTML = html
+
+})
+
+}
+
+load()
+loadUnknown()
+
+</script>
+
+</body>
+
+</html>
