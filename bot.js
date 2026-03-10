@@ -20,6 +20,7 @@ const openai = new OpenAI({
 // تشغيل واتساب
 const client = new Client({
   authStrategy: new LocalAuth(),
+  clientId: "samia-bot"
   puppeteer: {
     headless: true,
     args: [
@@ -32,12 +33,15 @@ const client = new Client({
 })
 
 // QR
-client.on("qr", qr => {
+client.on('qr', qr => {
   qrcode.generate(qr,{small:true})
 })
 
-// Ready
-client.on("ready", () => {
+client.on('authenticated', () => {
+  console.log("WhatsApp authenticated and session saved")
+})
+
+client.on('ready', () => {
   console.log("WhatsApp Bot Ready")
 })
 
@@ -246,6 +250,7 @@ console.log("Server running on port " + PORT)
 client.initialize()
 
 module.exports = { client }
+
 
 
 
