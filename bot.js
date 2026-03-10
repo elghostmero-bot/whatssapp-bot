@@ -10,7 +10,7 @@ const OpenAI = require("openai")
 const salonData = fs.readFileSync("salon-data.txt","utf8")
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_KEY
+  apiKey: process.env.OPENAI_API_KEY
 })
 const client = new Client({
   authStrategy: new LocalAuth(),
@@ -224,6 +224,7 @@ client.initialize();
 
 
 module.exports = { client }
+
 
 
 
