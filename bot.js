@@ -182,7 +182,7 @@ fs.writeFileSync("unknown.json",JSON.stringify(data,null,2))
 
 // إرسال الفواتير
 app.post("/send-invoice", async (req,res)=>{
-
+console.log("BODY RECEIVED:", req.body)
 let { bride, groom, imageBase64 } = req.body
 
 function formatNumber(num){
@@ -240,6 +240,7 @@ console.log("Server running on port " + PORT)
 client.initialize()
 
 module.exports = { client }
+
 
 
 
