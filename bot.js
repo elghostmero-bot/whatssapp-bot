@@ -110,7 +110,21 @@ app.post("/send-invoice", async (req, res) => {
     res.send("sent")
   } catch (err) { console.log(err); res.status(500).send("error") }
 })
-
+// ── إرسال صورة أو ملف مع caption ──
+app.post("/send-media", async (req, res) => {
+  let { phone, mediaBase64, mimeType, caption } = req.body
+  if (!phone || !mediaBase64) return res.status(400).json({ error: "phone and mediaBase64 required" })
+  phone = formatNumber(phone)
+  try {
+    await humanDelay(1500, 4000)
+    const base64Data = mediaBase64.replace(/^data:[^;]+;base64,/, "")
+    const media = new MessageMedia(mimeType || "image/jpeg", base64Data, "media-file")
+    await client.sendMessage(phone + "@c.us", media, { caption: caption || "" })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
 // ── إرسال رسالة نصية (للتذكيرات والبرودكاست) ──
 app.post("/send-message", async (req, res) => {
   let { phone, message } = req.body
@@ -133,3 +147,4 @@ const PORT = process.env.PORT || 3000
 app.listen(PORT, () => console.log("Server running on port " + PORT))
 client.initialize()
 module.exports = { client }
+
