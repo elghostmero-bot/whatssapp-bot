@@ -53,6 +53,21 @@ function normalizeText(text) {
 }
 
 client.on("message", async message => {
+  if(message.hasMedia){
+
+const media = await message.downloadMedia()
+
+if(media.mimetype.includes("audio")){
+
+await message.reply(
+"ممكن تبعتي السؤال كتابة علشان أقدر أرد بدقة؟ 🤍"
+)
+
+return
+
+}
+
+}
   if (!message.body) return
   if (message.from === "status@broadcast") return
   if (message.from.includes("@g.us")) return
@@ -147,4 +162,5 @@ const PORT = process.env.PORT || 3000
 app.listen(PORT, () => console.log("Server running on port " + PORT))
 client.initialize()
 module.exports = { client }
+
 
