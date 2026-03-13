@@ -27,46 +27,31 @@ const client = new Client({
   }
 })
 
+/* ضع رقمك هنا */
+const ADMIN_NUMBER = "201098266665@c.us"
+
+/* وضع التدريب */
+let trainingMode = false
+let trainingEnd = 0
+let lastQuestion = null
+
 /* QR */
 client.on("qr", qr => qrcode.generate(qr, { small: true }))
 
 client.on("authenticated",()=>console.log("WhatsApp authenticated"))
 client.on("ready",()=>console.log("WhatsApp Bot Ready"))
 
-/* helpers */
-
-function getReplies(){
-  try{
-    return JSON.parse(fs.readFileSync("replies.json"))
-  }catch{
-    return []
-  }
-}
-
 function formatNumber(num){
-
   num = num.replace(/\D/g,"")
-
   if(num.startsWith("20")) return num
   if(num.startsWith("0")) return "20"+num.slice(1)
   if(num.length===10) return "20"+num
-
   return num
 }
 
 function humanDelay(min=1500,max=4000){
   const ms = min + Math.random()*(max-min)
   return new Promise(r=>setTimeout(r,ms))
-}
-
-function normalizeText(text){
-  text=text.toLowerCase()
-  text=text.replace(/[أإآ]/g,"ا")
-  text=text.replace(/ى/g,"ي")
-  text=text.replace(/ة/g,"ه")
-  text=text.replace(/[؟?!.,]/g,"")
-  text=text.replace(/\bو([^\s]+)/g,"و $1")
-  return text
 }
 
 function isEmojiOnly(text){
@@ -80,9 +65,28 @@ function isLowValueMessage(text){
   return ignore.includes(msg)
 }
 
-let spamTracker={}
+function loadMemory(){
+  try{
+    return JSON.parse(fs.readFileSync("ai-memory.json"))
+  }catch{
+    return []
+  }
+}
 
-/* استقبال رسائل واتساب */
+function saveMemory(question,answer){
+
+  let memory = loadMemory()
+
+  memory.push({
+    question:question,
+    answer:answer
+  })
+
+  fs.writeFileSync("ai-memory.json",JSON.stringify(memory,null,2))
+
+}
+
+/* استقبال الرسائل */
 
 client.on("message", async message=>{
 
@@ -90,19 +94,47 @@ client.on("message", async message=>{
   if(message.from==="status@broadcast") return
   if(message.from.includes("@g.us")) return
 
-  if(isEmojiOnly(message.body)){
-    if(!spamTracker[message.from]) spamTracker[message.from]=0
-    spamTracker[message.from]++
+  /* تشغيل التدريب */
+  if(message.fromMe && message.body.startsWith("تدريب")){
+
+    const minutes = parseInt(message.body.split(" ")[1]) || 30
+
+    trainingMode = true
+    trainingEnd = Date.now() + minutes*60000
+
+    await client.sendMessage(
+      ADMIN_NUMBER,
+      "تم تشغيل وضع التدريب لمدة "+minutes+" دقيقة"
+    )
+
     return
   }
 
-  if(isLowValueMessage(message.body)) return
+  /* التعلم من ردك */
+  if(message.fromMe && lastQuestion){
 
-  spamTracker[message.from]=0
+    saveMemory(lastQuestion,message.body)
+
+    console.log("Learned new reply")
+
+    lastQuestion = null
+    return
+  }
+
+  if(isEmojiOnly(message.body)) return
+  if(isLowValueMessage(message.body)) return
 
   try{
 
     await humanDelay(2000,4500)
+
+    /* قراءة الذاكرة */
+
+    let memory = loadMemory()
+
+    let memoryText = memory
+      .map(x=>"سؤال: "+x.question+"\nالرد: "+x.answer)
+      .join("\n\n")
 
     const ai = await openai.chat.completions.create({
       model:"gpt-4o-mini",
@@ -115,8 +147,12 @@ client.on("message", async message=>{
 
 ${salonData}
 
-استخدم هذه المعلومات فقط للرد على العملاء.
-لو السؤال خارج هذه المعلومات اطلب توضيح.
+هذه ردود تعلمتها من صاحب الصالون:
+
+${memoryText}
+
+استخدم هذه الردود عندما تكون مناسبة.
+
 الرد يكون قصير وباللهجة المصرية.`
         },
         {
@@ -126,11 +162,34 @@ ${salonData}
       ]
     })
 
-    const reply=ai.choices?.[0]?.message?.content
+    const reply = ai.choices?.[0]?.message?.content
 
-    if(reply){
-      await message.reply(reply)
+    if(!reply) return
+
+    /* أثناء التدريب */
+
+    if(trainingMode){
+
+      if(Date.now() > trainingEnd){
+
+        trainingMode = false
+        console.log("Training ended")
+
+      }else{
+
+        lastQuestion = message.body
+
+        await client.sendMessage(
+          ADMIN_NUMBER,
+          "سؤال العميل:\n"+message.body+"\n\nرد AI:\n"+reply
+        )
+
+        return
+      }
+
     }
+
+    await message.reply(reply)
 
   }catch(err){
     console.log("AI ERROR:",err.message)
@@ -138,7 +197,7 @@ ${salonData}
 
 })
 
-/* ارسال رسالة نصية */
+/* ارسال رسالة */
 
 app.post("/send-message", async(req,res)=>{
 
@@ -168,89 +227,8 @@ app.post("/send-message", async(req,res)=>{
 
 })
 
-/* ارسال صورة او ملف */
-
-app.post("/send-media", async(req,res)=>{
-
-  let {phone,mediaBase64,mimeType,caption}=req.body
-
-  if(!phone || !mediaBase64)
-    return res.status(400).json({error:"phone and mediaBase64 required"})
-
-  phone=formatNumber(phone)
-
-  try{
-
-    await humanDelay(1500,4000)
-
-    const base64Data=mediaBase64.replace(/^data:[^;]+;base64,/,"")
-
-    const media=new MessageMedia(
-      mimeType || "image/jpeg",
-      base64Data,
-      "media-file"
-    )
-
-    await client.sendMessage(phone+"@c.us",media,{
-      caption:caption || ""
-    })
-
-    res.json({success:true})
-
-  }catch(err){
-
-    console.log("SEND MEDIA ERROR:",err.message)
-
-    res.status(500).json({error:err.message})
-  }
-
-})
-
-/* ارسال الفاتورة */
-
-app.post("/send-invoice", async(req,res)=>{
-
-  let {bride,groom,imageBase64}=req.body
-
-  if(!imageBase64)
-    return res.status(400).send("no image")
-
-  bride=formatNumber(bride)
-  groom=formatNumber(groom)
-
-  try{
-
-    const base64Data=imageBase64.replace(/^data:image\/\w+;base64,/,"")
-
-    const media=new MessageMedia("image/jpeg",base64Data,"invoice.jpg")
-
-    await client.sendMessage(bride+"@c.us",media,{
-      caption:"دي الفاتورة الخاصة بالحجز في Samia Makeup Artist 💄"
-    })
-
-    await client.sendMessage(groom+"@c.us",media,{
-      caption:"دي الفاتورة الخاصة بالحجز في Samia Makeup Artist 💄"
-    })
-
-    res.send("sent")
-
-  }catch(err){
-
-    console.log("INVOICE ERROR:",err)
-
-    res.status(500).send("error")
-  }
-
-})
-
-/* فحص السيرفر */
-
 app.get("/",(req,res)=>{
   res.send("WhatsApp bot is running")
-})
-
-app.get("/health",(req,res)=>{
-  res.json({status:"ok"})
 })
 
 const PORT = process.env.PORT || 3000
@@ -262,4 +240,3 @@ app.listen(PORT,()=>{
 client.initialize()
 
 module.exports={client}
-
