@@ -109,7 +109,7 @@ client.on("message", async message=>{
   if(message.from.includes("@g.us")) return
 
   /* تشغيل التدريب */
-  if(message.fromMe && message.body.startsWith("تدريب")){
+  if(message.from === ADMIN_NUMBER && message.body.startsWith("تدريب")){
 
     const minutes = parseInt(message.body.split(" ")[1]) || 30
 
@@ -254,3 +254,4 @@ app.listen(PORT,()=>{
 client.initialize()
 
 module.exports={client}
+
