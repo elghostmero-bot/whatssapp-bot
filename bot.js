@@ -7,8 +7,8 @@ const { Client, LocalAuth } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
 
 // ← متغيرات البيئة الجديدة في Railway
-const APP_URL       = process.env.APP_URL         https://samiamakeupartist.replit.app/
-const AI_SECRET_KEY = process.env.AI_SECRET_KEY   cinderella-bot-api-2026
+const APP_URL       = process.env.APP_URL        // https://samiamakeupartist.replit.app/
+const AI_SECRET_KEY = process.env.AI_SECRET_KEY  // cinderella-bot-api-2026
 const BRANCH_ID     = Number(process.env.BRANCH_ID || 1)
 const ADMIN_NUMBER  = "201098266665@c.us"
 
@@ -97,3 +97,4 @@ app.get("/", (req,res) => res.send("WhatsApp bot is running"))
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = {client}
+
