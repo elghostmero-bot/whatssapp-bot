@@ -19,6 +19,14 @@ const client = new Client({
     args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
   }
 })
+const QRCode = require("qrcode")  // ← أضيف في الأعلى مع باقي الـ require
+let currentQR = null  // ← بعد تعريف BRANCH_ID
+// ← عدّل الـ QR event
+client.on("qr", async qr => {
+  qrcode.generate(qr, { small: true })
+  currentQR = await QRCode.toDataURL(qr)  // ← احفظ الـ QR كصورة
+  console.log("QR ready at /qr")
+})
 
 client.on("qr", qr => qrcode.generate(qr, { small: true }))
 client.on("authenticated", () => console.log("WhatsApp authenticated"))
@@ -94,8 +102,18 @@ app.post("/send-message", async(req,res)=>{
 })
 
 app.get("/", (req,res) => res.send("WhatsApp bot is running"))
+// ← أضيف الـ endpoint ده قبل app.listen
+app.get("/qr", (req, res) => {
+  if (!currentQR) return res.send("<h2>No QR yet — wait a moment and refresh</h2>")
+  res.send(`<html><body style="text-align:center;padding:50px">
+    <h2>Scan with WhatsApp</h2>
+    <img src="${currentQR}" style="width:300px"/>
+    <p>Refresh if expired</p>
+  </body></html>`)
+})
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = {client}
+
 
 
