@@ -5,7 +5,14 @@ app.use(express.json({ limit: "20mb" }))
 
 const { Client, LocalAuth } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
-
+const QRCode = require("qrcode")  // ← أضيف في الأعلى مع باقي الـ require
+let currentQR = null  // ← بعد تعريف BRANCH_ID
+// ← عدّل الـ QR event
+client.on("qr", async qr => {
+  qrcode.generate(qr, { small: true })
+  currentQR = await QRCode.toDataURL(qr)  // ← احفظ الـ QR كصورة
+  console.log("QR ready at /qr")
+})
 // ← متغيرات البيئة الجديدة في Railway
 const APP_URL       = process.env.APP_URL        // https://samiamakeupartist.replit.app/
 const AI_SECRET_KEY = process.env.AI_SECRET_KEY  // cinderella-bot-api-2026
@@ -19,14 +26,7 @@ const client = new Client({
     args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
   }
 })
-const QRCode = require("qrcode")  // ← أضيف في الأعلى مع باقي الـ require
-let currentQR = null  // ← بعد تعريف BRANCH_ID
-// ← عدّل الـ QR event
-client.on("qr", async qr => {
-  qrcode.generate(qr, { small: true })
-  currentQR = await QRCode.toDataURL(qr)  // ← احفظ الـ QR كصورة
-  console.log("QR ready at /qr")
-})
+
 
 client.on("qr", qr => qrcode.generate(qr, { small: true }))
 client.on("authenticated", () => console.log("WhatsApp authenticated"))
@@ -114,6 +114,7 @@ app.get("/qr", (req, res) => {
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = {client}
+
 
 
 
