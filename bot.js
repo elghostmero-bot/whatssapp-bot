@@ -3,7 +3,7 @@ const app = express()
 
 app.use(express.json({ limit: "20mb" }))
 
-const { Client, LocalAuth, MessageMedia } = require("whatssapp-web.js")
+const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
 const fs = require("fs")
 const OpenAI = require("openai")
@@ -182,6 +182,7 @@ app.listen(PORT, () => console.log("Server running on port " + PORT))
 client.initialize()
 
 module.exports = { client }
+
 
 
 
