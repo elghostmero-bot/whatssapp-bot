@@ -74,16 +74,30 @@ function loadMemory(){
 }
 
 function saveMemory(question,answer){
-
   let memory = loadMemory()
-
   memory.push({
     question:question,
     answer:answer
   })
-
   fs.writeFileSync("ai-memory.json",JSON.stringify(memory,null,2))
+}
 
+/* فحص هل السؤال موجود بالفعل */
+function questionExists(question){
+
+  const q = question.toLowerCase()
+
+  if(salonData.toLowerCase().includes(q)) return true
+
+  const memory = loadMemory()
+
+  for(const item of memory){
+    if(item.question.toLowerCase().includes(q) || q.includes(item.question.toLowerCase())){
+      return true
+    }
+  }
+
+  return false
 }
 
 /* استقبال الرسائل */
@@ -128,8 +142,6 @@ client.on("message", async message=>{
 
     await humanDelay(2000,4500)
 
-    /* قراءة الذاكرة */
-
     let memory = loadMemory()
 
     let memoryText = memory
@@ -171,20 +183,22 @@ ${memoryText}
     if(trainingMode){
 
       if(Date.now() > trainingEnd){
-
         trainingMode = false
         console.log("Training ended")
-
       }else{
 
-        lastQuestion = message.body
+        if(!questionExists(message.body)){
 
-        await client.sendMessage(
-          ADMIN_NUMBER,
-          "سؤال العميل:\n"+message.body+"\n\nرد AI:\n"+reply
-        )
+          lastQuestion = message.body
 
-        return
+          await client.sendMessage(
+            ADMIN_NUMBER,
+            "سؤال العميل:\n"+message.body+"\n\nرد AI:\n"+reply
+          )
+
+          return
+        }
+
       }
 
     }
