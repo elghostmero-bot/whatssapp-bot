@@ -28,10 +28,7 @@ const client = new Client({
 })
 
 /* QR */
-client.on("qr", qr=>{
-  console.log("SCAN QR:")
-  console.log("https://api.qrserver.com/v1/create-qr-code/?size=300x300&data="+qr)
-})
+client.on("qr", qr => qrcode.generate(qr, { small: true }))
 
 client.on("authenticated",()=>console.log("WhatsApp authenticated"))
 client.on("ready",()=>console.log("WhatsApp Bot Ready"))
@@ -265,3 +262,4 @@ app.listen(PORT,()=>{
 client.initialize()
 
 module.exports={client}
+
