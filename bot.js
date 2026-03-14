@@ -191,10 +191,10 @@ app.post("/webhook",async(req,res)=>{
         text=ev.message.text
       }
 
-      if(ev.value&&ev.value.messages){
-        sender_psid=ev.value.messages[0].from.id
-        text=ev.value.messages[0].text
-      }
+      if(ev.value && ev.value.messages){
+  sender_psid = ev.value.messages[0].from.id
+  text = ev.value.messages[0].text || ev.value.messages[0].message
+}
 
       if(!sender_psid||!text) continue
 
