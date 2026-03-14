@@ -128,6 +128,7 @@ app.get("/webhook", (req, res) => {
 });
 /* استقبال رسائل ماسنجر */
 app.post("/webhook", async (req, res) => {
+  console.log("BODY:", JSON.stringify(req.body, null, 2));
 
   let body = req.body;
 
@@ -135,7 +136,7 @@ app.post("/webhook", async (req, res) => {
 
     for (const entry of body.entry) {
 
-  const events = entry.messaging || entry.changes;
+  const events = entry.messaging || entry.changes || [];
 
   if (!events) continue;
 
