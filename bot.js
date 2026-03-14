@@ -112,6 +112,20 @@ app.get("/qr", (req, res) => {
     <p>Refresh if expired</p>
   </body></html>`)
 })
+app.get("/webhook", (req, res) => {
+  const VERIFY_TOKEN = "samia_bot_verify";
+
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode === "subscribe" && token === VERIFY_TOKEN) {
+    console.log("WEBHOOK VERIFIED");
+    res.status(200).send(challenge);
+  } else {
+    res.sendStatus(403);
+  }
+});
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = {client}
