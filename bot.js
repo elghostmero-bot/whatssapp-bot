@@ -142,7 +142,7 @@ app.post("/webhook", async (req, res) => {
   const event = events[0];
       console.log("Incoming event:", JSON.stringify(event, null, 2));
 
-      const sender_psid = event.sender.id;
+      const sender_psid = event.sender?.id || event.sender_id;
 
       if (event.message && event.message.text) {
 
