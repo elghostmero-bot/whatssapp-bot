@@ -131,7 +131,7 @@ app.post("/webhook", async (req, res) => {
 
   let body = req.body;
 
- if (body.object === "page" || body.object === "instagram") {
+ if (body.object === "page") {
 
     for (const entry of body.entry) {
 
