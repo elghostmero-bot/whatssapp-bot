@@ -1,5 +1,5 @@
-const FB_PAGE_TOKEN = "EAA49g0ZBaS9QBQzz3ZCrH07U5BtZBLF053ZCG55UoXVekIwDKqPnZCgJogt53msJxPOcqWHRDiZBzbyehgQmlHkZBxibBOXqT1l2IZBKcCbptFYK1P46KRYXvuGefHYW67Onq8NSom1b5Pesm5TQ7ewd7aPVgMQ7Xd6UD4ZBfZCgLIunMMqvLWOQmXBd11XoPZCIxtwxIS6GKU1MpWAJAlRo4cqQ5Y4mgZDZD"
-const IG_PAGE_TOKEN = "EAA49g0ZBaS9QBQ85J5oO2C4qZBJyMzdjRPXGDwtNZB3ZBXR24ovxUGbq15ZBoRiiaxvsPTogZA5SJywx5EyT9UFc22FjmfbhAqoNRNbJMAb8hbQhTZCSZAnZCvdDZAQ40uJMeG6BVapmEQGZAxfVcaeqrNh1xcavgZAiEBHjT0hPCKsZCP7GmUszfrNilrjMVduGazXZBam7Hg0C7OZAg7gjNpfjhJRwIvNPwZDZD"
+const FB_PAGE_TOKEN = "EAA49g0ZBaS9QBQwpUXSvlnuBxjJXmyyPjcyHSKO8TWVntngwcVCZAygKVIRliGMoqZA9K4Y6oSxRE69ZAk5cw8dZCYP9pMTIQhOEZAaZCf5hsZBYpGZCUcubs2KB1xXaYoDBkibpXFHojXEUWr3bxAN6Nv6lZCQvCJZAlc6apeZAClWRKdUtFZCwqTfITp6D9cG6TzeA4wCC1Fcc7MbrDp7lwXPVlDM288wZDZD"
+const IG_PAGE_TOKEN = "EAA49g0ZBaS9QBQ7LaZAFoUzz7TgHiscT3W1RwZAsXVtSTdZC8VZCZA3fz4uX2mjLslo2F90ZBlEmkDFJpUbQsaIwvCut91uI8WSCUYwxwxUFqn4smSjsDhZBWRBsocfGp9XemEqE0QnL148QIUdRjH7O587AhtuiTdJHLBMX8ZBibWgwboCbcfE9bfNx1B87H3z3MPd7u90yaLGqVZCUbzIZBVaDjRfOAZDZD"
 
 const express = require("express")
 const app = express()
@@ -11,9 +11,9 @@ const { Client, LocalAuth } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
 const QRCode = require("qrcode")
 
-const APP_URL       = process.env.APP_URL
+const APP_URL = process.env.APP_URL
 const AI_SECRET_KEY = process.env.AI_SECRET_KEY
-const BRANCH_ID     = Number(process.env.BRANCH_ID || 1)
+const BRANCH_ID = Number(process.env.BRANCH_ID || 1)
 
 let currentQR = null
 
@@ -59,7 +59,7 @@ function isIgnored(text){
   return ["ok","okay","تمام","تم","شكرا","شكراً","thanks","thx","👍","👌"].includes(low)
 }
 
-/* استقبال رسائل واتساب */
+/* واتساب */
 
 client.on("message", async msg => {
 
@@ -97,29 +97,44 @@ client.on("message", async msg => {
     if(reply) await msg.reply(reply)
 
   }catch(err){
-    console.log("ERROR:",err.message)
+    console.log("WhatsApp error:",err.message)
   }
 
 })
 
-/* ارسال رسالة واتساب من التطبيق */
+/* VERIFY WEBHOOK */
 
-/* استقبال رسائل ماسنجر و انستجرام */
+app.get("/webhook",(req,res)=>{
+
+  const VERIFY_TOKEN="samia_bot_verify"
+
+  const mode=req.query["hub.mode"]
+  const token=req.query["hub.verify_token"]
+  const challenge=req.query["hub.challenge"]
+
+  if(mode==="subscribe" && token===VERIFY_TOKEN){
+    console.log("WEBHOOK VERIFIED")
+    res.status(200).send(challenge)
+  }else{
+    res.sendStatus(403)
+  }
+
+})
+
+/* استقبال ماسنجر + انستجرام */
 
 app.post("/webhook",async(req,res)=>{
 
-  console.log("BODY:",JSON.stringify(req.body,null,2))
-
   const body=req.body
+  console.log("BODY:",JSON.stringify(body,null,2))
 
-  if(body.object!=="page"&&body.object!=="instagram"){
+  if(body.object!=="page" && body.object!=="instagram"){
     return res.sendStatus(200)
   }
 
   for(const entry of body.entry){
 
-    const events=entry.messaging||entry.changes
-
+    const events = entry.messaging || entry.changes
     if(!events) continue
 
     for(const ev of events){
@@ -128,27 +143,31 @@ app.post("/webhook",async(req,res)=>{
       let text=null
       let platform="facebook"
 
-      if(ev.sender&&ev.message){
-        sender_psid=ev.sender.id
-        text=ev.message.text
+      /* Messenger */
+
+      if(ev.sender && ev.message){
+        sender_psid = ev.sender.id
+        text = ev.message.text
         platform="facebook"
       }
 
+      /* Instagram */
+
       if(ev.value && ev.value.messages){
-        console.log("INSTAGRAM EVENT:", JSON.stringify(ev,null,2))
         sender_psid = ev.value.messages[0].from.id
-        text = ev.value.messages[0].text || ev.value.messages[0].message
+        text = ev.value.messages[0].text
         platform="instagram"
       }
 
-      if(!sender_psid||!text) continue
+      if(!sender_psid || !text) continue
 
-      console.log("MESSAGE FROM:",sender_psid)
+      console.log("PLATFORM:",platform)
+      console.log("USER:",sender_psid)
       console.log("TEXT:",text)
 
       try{
 
-        const response=await fetch(`${APP_URL}/api/ai/respond`,{
+        const ai = await fetch(`${APP_URL}/api/ai/respond`,{
           method:"POST",
           headers:{
             "Content-Type":"application/json",
@@ -161,126 +180,37 @@ app.post("/webhook",async(req,res)=>{
           })
         })
 
-        if(!response.ok){
-          console.log("AI error:",response.status)
+        if(!ai.ok){
+          console.log("AI error:",ai.status)
           continue
         }
 
-        const {reply}=await response.json()
+        const {reply}=await ai.json()
 
-        if(reply){
+        if(!reply) continue
 
-          const token = platform === "instagram"
-            ? IG_PAGE_TOKEN
-            : FB_PAGE_TOKEN
+        const token = platform==="instagram"
+          ? IG_PAGE_TOKEN
+          : FB_PAGE_TOKEN
 
-          await fetch(`https://graph.facebook.com/v18.0/me/messages?access_token=${token}`,{
+        const send = await fetch(
+          `https://graph.facebook.com/v18.0/me/messages?access_token=${token}`,
+          {
             method:"POST",
-            headers:{
-              "Content-Type":"application/json"
-            },
+            headers:{ "Content-Type":"application/json" },
             body:JSON.stringify({
               messaging_type:"RESPONSE",
-              recipient:{id:sender_psid},
-              message:{text:reply}
+              recipient:{ id: sender_psid },
+              message:{ text: reply }
             })
-          })
+          }
+        )
 
-        }
+        const result = await send.text()
+        console.log("SEND RESULT:",result)
 
       }catch(err){
-
         console.log("Webhook error:",err.message)
-
-      }
-
-    }
-
-  }
-
-  res.status(200).send("EVENT_RECEIVED")
-
-})
-/* استقبال رسائل ماسنجر و انستجرام */
-
-app.post("/webhook",async(req,res)=>{
-
-  console.log("BODY:",JSON.stringify(req.body,null,2))
-
-  const body=req.body
-
-  if(body.object!=="page"&&body.object!=="instagram"){
-    return res.sendStatus(200)
-  }
-
-  for(const entry of body.entry){
-
-    const events=entry.messaging||entry.changes
-
-    if(!events) continue
-
-    for(const ev of events){
-
-      let sender_psid=null
-      let text=null
-
-      if(ev.sender&&ev.message){
-        sender_psid=ev.sender.id
-        text=ev.message.text
-      }
-
-      if(ev.value && ev.value.messages){
-        console.log("INSTAGRAM EVENT:", JSON.stringify(ev,null,2))
-  sender_psid = ev.value.messages[0].from.id
-  text = ev.value.messages[0].text || ev.value.messages[0].message
-}
-
-      if(!sender_psid||!text) continue
-
-      console.log("MESSAGE FROM:",sender_psid)
-      console.log("TEXT:",text)
-
-      try{
-
-        const response=await fetch(`${APP_URL}/api/ai/respond`,{
-          method:"POST",
-          headers:{
-            "Content-Type":"application/json",
-            "x-api-key":AI_SECRET_KEY
-          },
-          body:JSON.stringify({
-            branchId:BRANCH_ID,
-            phone:sender_psid,
-            message:text
-          })
-        })
-
-        if(!response.ok){
-          console.log("AI error:",response.status)
-          continue
-        }
-
-        const {reply}=await response.json()
-
-        if(reply){
-
-          await fetch(`https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,{
-            method:"POST",
-            headers:{
-              "Content-Type":"application/json"
-            },
-            body:JSON.stringify({
-              recipient:{id:sender_psid},
-              message:{text:reply}
-            })
-          })
-
-        }
-
-      }catch(err){
-
-        console.log("Webhook error:",err.message)
-
       }
 
     }
