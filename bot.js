@@ -126,6 +126,88 @@ app.get("/webhook", (req, res) => {
     res.sendStatus(403);
   }
 });
+/* استقبال رسائل ماسنجر */
+app.post("/webhook", async (req, res) => {
+
+  let body = req.body;
+
+  if (body.object === "page") {
+
+    for (const entry of body.entry) {
+      const event = entry.messaging[0];
+
+      if (!event) continue;
+
+      const sender_psid = event.sender.id;
+
+      if (event.message && event.message.text) {
+
+        const userMessage = event.message.text;
+
+        try {
+
+          const response = await fetch(`${APP_URL}/api/ai/respond`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": AI_SECRET_KEY
+            },
+            body: JSON.stringify({
+              branchId: BRANCH_ID,
+              phone: sender_psid,
+              message: userMessage
+            })
+          });
+
+          if (!response.ok) {
+            console.log("Messenger AI error:", response.status);
+            continue;
+          }
+
+          const { reply } = await response.json();
+
+          if (reply) {
+            await sendMessengerMessage(sender_psid, reply);
+          }
+
+        } catch (err) {
+          console.log("Messenger error:", err.message);
+        }
+
+      }
+    }
+
+    res.status(200).send("EVENT_RECEIVED");
+
+  } else {
+    res.sendStatus(404);
+  }
+
+});
+
+
+/* إرسال رسالة ماسنجر */
+async function sendMessengerMessage(sender_psid, text) {
+
+  try {
+
+    await fetch(
+      `https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient: { id: sender_psid },
+          message: { text: text }
+        })
+      }
+    );
+
+  } catch (err) {
+    console.log("Messenger send error:", err.message);
+  }
+
+}
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = {client}
