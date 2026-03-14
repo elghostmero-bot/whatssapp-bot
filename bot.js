@@ -131,12 +131,15 @@ app.post("/webhook", async (req, res) => {
 
   let body = req.body;
 
-  if (body.object === "page") {
+ if (body.object === "page" || body.object === "instagram") {
 
     for (const entry of body.entry) {
-      const event = entry.messaging[0];
 
-      if (!event) continue;
+  const events = entry.messaging || entry.changes;
+
+  if (!events) continue;
+
+  const event = events[0];
 
       const sender_psid = event.sender.id;
 
@@ -180,7 +183,7 @@ app.post("/webhook", async (req, res) => {
     res.status(200).send("EVENT_RECEIVED");
 
   } else {
-    res.sendStatus(404);
+    res.sendStatus(200);
   }
 
 });
