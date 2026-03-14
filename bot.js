@@ -139,7 +139,14 @@ app.post("/webhook", async (req, res) => {
 
   if (!events) continue;
 
-  const event = events[0];
+  let event = events[0];
+
+if (entry.changes && entry.changes[0].value.messages) {
+  event = {
+    sender: { id: entry.changes[0].value.messages[0].from.id },
+    message: { text: entry.changes[0].value.messages[0].text }
+  };
+}
       console.log("Incoming event:", JSON.stringify(event, null, 2));
 
       const sender_psid = event.sender?.id || event.sender_id;
