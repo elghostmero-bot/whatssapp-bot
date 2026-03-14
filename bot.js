@@ -1,4 +1,5 @@
-const PAGE_ACCESS_TOKEN = "IGAAW2GZC9JxzxBZAGFyZAHhGb0dCYXVudDN3S25CZAUJRNXVtVTBfRlZAnM2NJT2FCcWRsdEtvV0wwdWlZAbmZAYNS1vT3p3TW1PN0gwZAEhUdkQxSEotSGU5WF9NT3dlb2o0MXFpaVJWQ1AyMFI4Uk9qWkxpNzVKSWkzTVpqV0pPXzI4ZAwZDZD"
+const FB_PAGE_TOKEN = "EAA49g0ZBaS9QBQzz3ZCrH07U5BtZBLF053ZCG55UoXVekIwDKqPnZCgJogt53msJxPOcqWHRDiZBzbyehgQmlHkZBxibBOXqT1l2IZBKcCbptFYK1P46KRYXvuGefHYW67Onq8NSom1b5Pesm5TQ7ewd7aPVgMQ7Xd6UD4ZBfZCgLIunMMqvLWOQmXBd11XoPZCIxtwxIS6GKU1MpWAJAlRo4cqQ5Y4mgZDZD"
+const IG_PAGE_TOKEN = "EAA49g0ZBaS9QBQ85J5oO2C4qZBJyMzdjRPXGDwtNZB3ZBXR24ovxUGbq15ZBoRiiaxvsPTogZA5SJywx5EyT9UFc22FjmfbhAqoNRNbJMAb8hbQhTZCSZAnZCvdDZAQ40uJMeG6BVapmEQGZAxfVcaeqrNh1xcavgZAiEBHjT0hPCKsZCP7GmUszfrNilrjMVduGazXZBam7Hg0C7OZAg7gjNpfjhJRwIvNPwZDZD"
 
 const express = require("express")
 const app = express()
@@ -103,66 +104,103 @@ client.on("message", async msg => {
 
 /* ارسال رسالة واتساب من التطبيق */
 
-app.post("/send-message",async(req,res)=>{
+/* استقبال رسائل ماسنجر و انستجرام */
 
-  let {phone,message}=req.body
+app.post("/webhook",async(req,res)=>{
 
-  if(!phone||!message){
-    return res.status(400).json({error:"phone and message required"})
+  console.log("BODY:",JSON.stringify(req.body,null,2))
+
+  const body=req.body
+
+  if(body.object!=="page"&&body.object!=="instagram"){
+    return res.sendStatus(200)
   }
 
-  phone=formatNumber(phone)
+  for(const entry of body.entry){
 
-  try{
+    const events=entry.messaging||entry.changes
 
-    await humanDelay(1500,4000)
+    if(!events) continue
 
-    await client.sendMessage(phone+"@c.us",message)
+    for(const ev of events){
 
-    res.json({success:true})
+      let sender_psid=null
+      let text=null
+      let platform="facebook"
 
-  }catch(err){
+      if(ev.sender&&ev.message){
+        sender_psid=ev.sender.id
+        text=ev.message.text
+        platform="facebook"
+      }
 
-    res.status(500).json({error:err.message})
+      if(ev.value && ev.value.messages){
+        console.log("INSTAGRAM EVENT:", JSON.stringify(ev,null,2))
+        sender_psid = ev.value.messages[0].from.id
+        text = ev.value.messages[0].text || ev.value.messages[0].message
+        platform="instagram"
+      }
+
+      if(!sender_psid||!text) continue
+
+      console.log("MESSAGE FROM:",sender_psid)
+      console.log("TEXT:",text)
+
+      try{
+
+        const response=await fetch(`${APP_URL}/api/ai/respond`,{
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "x-api-key":AI_SECRET_KEY
+          },
+          body:JSON.stringify({
+            branchId:BRANCH_ID,
+            phone:sender_psid,
+            message:text
+          })
+        })
+
+        if(!response.ok){
+          console.log("AI error:",response.status)
+          continue
+        }
+
+        const {reply}=await response.json()
+
+        if(reply){
+
+          const token = platform === "instagram"
+            ? IG_PAGE_TOKEN
+            : FB_PAGE_TOKEN
+
+          await fetch(`https://graph.facebook.com/v18.0/me/messages?access_token=${token}`,{
+            method:"POST",
+            headers:{
+              "Content-Type":"application/json"
+            },
+            body:JSON.stringify({
+              messaging_type:"RESPONSE",
+              recipient:{id:sender_psid},
+              message:{text:reply}
+            })
+          })
+
+        }
+
+      }catch(err){
+
+        console.log("Webhook error:",err.message)
+
+      }
+
+    }
 
   }
 
-})
-
-app.get("/",(req,res)=>res.send("Bot running"))
-
-app.get("/qr",(req,res)=>{
-  if(!currentQR) return res.send("<h2>No QR yet</h2>")
-  res.send(`<html><body style="text-align:center;padding:50px">
-  <h2>Scan QR</h2>
-  <img src="${currentQR}" style="width:300px"/>
-  </body></html>`)
-})
-
-/* WEBHOOK VERIFY */
-
-app.get("/webhook",(req,res)=>{
-
-  const VERIFY_TOKEN="samia_bot_verify"
-
-  const mode=req.query["hub.mode"]
-  const token=req.query["hub.verify_token"]
-  const challenge=req.query["hub.challenge"]
-
-  if(mode==="subscribe"&&token===VERIFY_TOKEN){
-
-    console.log("WEBHOOK VERIFIED")
-
-    res.status(200).send(challenge)
-
-  }else{
-
-    res.sendStatus(403)
-
-  }
+  res.status(200).send("EVENT_RECEIVED")
 
 })
-
 /* استقبال رسائل ماسنجر و انستجرام */
 
 app.post("/webhook",async(req,res)=>{
