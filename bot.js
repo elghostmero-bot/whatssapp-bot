@@ -134,7 +134,7 @@ app.post("/webhook",async(req,res)=>{
 
   for(const entry of body.entry){
 
-    const events = entry.messaging || entry.changes
+    const events = entry.messaging || entry.changes || entry.standby
     if(!events) continue
 
     for(const ev of events){
@@ -158,6 +158,11 @@ app.post("/webhook",async(req,res)=>{
         text = ev.value.messages[0].text
         platform="instagram"
       }
+      if(ev.message && ev.sender){
+  sender_psid = ev.sender.id
+  text = ev.message.text
+  platform = "instagram"
+}
 
       if(!sender_psid || !text) continue
 
