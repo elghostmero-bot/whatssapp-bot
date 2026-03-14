@@ -1,48 +1,53 @@
-const PAGE_ACCESS_TOKEN = "EAAaGh5SxSesBQ6wIfN6KI8pAZCToDDWrfbIsfqaiqec5U0WIqJZCHt5B9qNOZANJ3wyR27nMVKODkrMWr5XLrk4NncrZA3NurMrPnzCiZBME5roZABIpxZBWFLp6tECZCeyxiiHv9nZCCbNDvNxZBDLeIokGuX29d9ZAdCkAnROtUSpMUb6NUtuXlQUbQZBLLa4EB3aq2uZAcMnbgxKtYCUXEdoFCI7bcxgZDZD";
+const PAGE_ACCESS_TOKEN = "EAAaGh5SxSesBQ6wIfN6KI8pAZCToDDWrfbIsfqaiqec5U0WIqJZCHt5B9qNOZANJ3wyR27nMVKODkrMWr5XLrk4NncrZA3NurMrPnzCiZBME5roZABIpxZBWFLp6tECZCeyxiiHv9nZCCbNDvNxZBDLeIokGuX29d9ZAdCkAnROtUSpMUb6NUtuXlQUbQZBLLa4EB3aq2uZAcMnbgxKtYCUXEdoFCI7bcxgZDZD"
+
 const express = require("express")
 const app = express()
 app.use(express.json({ limit: "20mb" }))
 
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args))
+
 const { Client, LocalAuth } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
-const QRCode = require("qrcode")  // ← أضيف في الأعلى مع باقي الـ require
+const QRCode = require("qrcode")
 
-
-// ← متغيرات البيئة الجديدة في Railway
-const APP_URL       = process.env.APP_URL        // https://samiamakeupartist.replit.app/
-const AI_SECRET_KEY = process.env.AI_SECRET_KEY  // cinderella-bot-api-2026
+const APP_URL       = process.env.APP_URL
+const AI_SECRET_KEY = process.env.AI_SECRET_KEY
 const BRANCH_ID     = Number(process.env.BRANCH_ID || 1)
-let currentQR = null  // ← بعد تعريف BRANCH_ID
-const ADMIN_NUMBER  = "201098266665@c.us"
+
+let currentQR = null
 
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: "samia-bot" }),
   puppeteer: {
     headless: true,
-    args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu"
+    ]
   }
 })
 
-
-// ← عدّل الـ QR event
 client.on("qr", async qr => {
   qrcode.generate(qr, { small: true })
-  currentQR = await QRCode.toDataURL(qr)  // ← احفظ الـ QR كصورة
+  currentQR = await QRCode.toDataURL(qr)
   console.log("QR ready at /qr")
 })
+
 client.on("authenticated", () => console.log("WhatsApp authenticated"))
-client.on("ready",        () => console.log("WhatsApp Bot Ready"))
+client.on("ready", () => console.log("WhatsApp Bot Ready"))
 
 function formatNumber(num){
   num = num.replace(/\D/g,"")
-  if(num.startsWith("20"))  return num
-  if(num.startsWith("0"))   return "20"+num.slice(1)
-  if(num.length === 10)     return "20"+num
+  if(num.startsWith("20")) return num
+  if(num.startsWith("0")) return "20"+num.slice(1)
+  if(num.length === 10) return "20"+num
   return num
 }
 
-function humanDelay(min=1500, max=4000){
-  return new Promise(r => setTimeout(r, min + Math.random()*(max-min)))
+function humanDelay(min=1500,max=4000){
+  return new Promise(r => setTimeout(r,min+Math.random()*(max-min)))
 }
 
 function isIgnored(text){
@@ -53,178 +58,202 @@ function isIgnored(text){
   return ["ok","okay","تمام","تم","شكرا","شكراً","thanks","thx","👍","👌"].includes(low)
 }
 
-/* استقبال رسائل العملاء */
+/* استقبال رسائل واتساب */
+
 client.on("message", async msg => {
-  if(msg.fromMe)                         return
-  if(msg.from === "status@broadcast")    return
-  if(msg.from.includes("@g.us"))         return
-  if(isIgnored(msg.body))                return
+
+  if(msg.fromMe) return
+  if(msg.from === "status@broadcast") return
+  if(msg.from.includes("@g.us")) return
+  if(isIgnored(msg.body)) return
 
   const phone = formatNumber(msg.from.replace("@c.us",""))
 
   try{
-    await humanDelay(2000, 4500)
 
-    // ← هنا بيسأل تطبيقك بدل الملف الثابت
-    const res = await fetch(`${APP_URL}/api/ai/respond`, {
-      method:  "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key":    AI_SECRET_KEY
+    await humanDelay(2000,4500)
+
+    const res = await fetch(`${APP_URL}/api/ai/respond`,{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-api-key":AI_SECRET_KEY
       },
-      body: JSON.stringify({ branchId: BRANCH_ID, phone, message: msg.body })
+      body:JSON.stringify({
+        branchId:BRANCH_ID,
+        phone,
+        message:msg.body
+      })
     })
 
     if(!res.ok){
-      console.log("AI API error:", res.status, await res.text())
+      console.log("AI API error:",res.status)
       return
     }
 
-    const { reply } = await res.json()
+    const {reply} = await res.json()
+
     if(reply) await msg.reply(reply)
 
   }catch(err){
-    console.log("ERROR:", err.message)
+    console.log("ERROR:",err.message)
   }
+
 })
 
-/* إرسال رسالة من التطبيق */
-app.post("/send-message", async(req,res)=>{
-  let { phone, message } = req.body
-  if(!phone || !message) return res.status(400).json({error:"phone and message required"})
-  phone = formatNumber(phone)
+/* ارسال رسالة واتساب من التطبيق */
+
+app.post("/send-message",async(req,res)=>{
+
+  let {phone,message}=req.body
+
+  if(!phone||!message){
+    return res.status(400).json({error:"phone and message required"})
+  }
+
+  phone=formatNumber(phone)
+
   try{
-    await humanDelay(1500, 4000)
-    await client.sendMessage(phone+"@c.us", message)
+
+    await humanDelay(1500,4000)
+
+    await client.sendMessage(phone+"@c.us",message)
+
     res.json({success:true})
+
   }catch(err){
-    res.status(500).json({error: err.message})
+
+    res.status(500).json({error:err.message})
+
   }
+
 })
 
-app.get("/", (req,res) => res.send("WhatsApp bot is running"))
-// ← أضيف الـ endpoint ده قبل app.listen
-app.get("/qr", (req, res) => {
-  if (!currentQR) return res.send("<h2>No QR yet — wait a moment and refresh</h2>")
+app.get("/",(req,res)=>res.send("Bot running"))
+
+app.get("/qr",(req,res)=>{
+  if(!currentQR) return res.send("<h2>No QR yet</h2>")
   res.send(`<html><body style="text-align:center;padding:50px">
-    <h2>Scan with WhatsApp</h2>
-    <img src="${currentQR}" style="width:300px"/>
-    <p>Refresh if expired</p>
+  <h2>Scan QR</h2>
+  <img src="${currentQR}" style="width:300px"/>
   </body></html>`)
 })
-app.get("/webhook", (req, res) => {
-  const VERIFY_TOKEN = "samia_bot_verify";
 
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
+/* WEBHOOK VERIFY */
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("WEBHOOK VERIFIED");
-    res.status(200).send(challenge);
-  } else {
-    res.sendStatus(403);
+app.get("/webhook",(req,res)=>{
+
+  const VERIFY_TOKEN="samia_bot_verify"
+
+  const mode=req.query["hub.mode"]
+  const token=req.query["hub.verify_token"]
+  const challenge=req.query["hub.challenge"]
+
+  if(mode==="subscribe"&&token===VERIFY_TOKEN){
+
+    console.log("WEBHOOK VERIFIED")
+
+    res.status(200).send(challenge)
+
+  }else{
+
+    res.sendStatus(403)
+
   }
-});
-/* استقبال رسائل ماسنجر */
-app.post("/webhook", async (req, res) => {
-  console.log("BODY:", JSON.stringify(req.body, null, 2));
 
-  let body = req.body;
+})
 
- if (body.object === "page" || body.object === "instagram") {
+/* استقبال رسائل ماسنجر و انستجرام */
 
-    for (const entry of body.entry) {
+app.post("/webhook",async(req,res)=>{
 
-  const events = entry.messaging || entry.changes || [];
+  console.log("BODY:",JSON.stringify(req.body,null,2))
 
-  if (!events) continue;
+  const body=req.body
 
-  let event = events[0];
+  if(body.object!=="page"&&body.object!=="instagram"){
+    return res.sendStatus(200)
+  }
 
-if (entry.changes && entry.changes[0].value.messages) {
-  event = {
-    sender: { id: entry.changes[0].value.messages[0].from.id },
-    message: { text: entry.changes[0].value.messages[0].text }
-  };
-}
-      console.log("Incoming event:", JSON.stringify(event, null, 2));
+  for(const entry of body.entry){
 
-      const sender_psid = event.sender?.id || event.sender_id;
+    const events=entry.messaging||entry.changes
 
-      if (event.message && event.message.text) {
+    if(!events) continue
 
-        const userMessage = event.message.text;
+    for(const ev of events){
 
-        try {
+      let sender_psid=null
+      let text=null
 
-          const response = await fetch(`${APP_URL}/api/ai/respond`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": AI_SECRET_KEY
-            },
-            body: JSON.stringify({
-              branchId: BRANCH_ID,
-              phone: sender_psid,
-              message: userMessage
-            })
-          });
+      if(ev.sender&&ev.message){
+        sender_psid=ev.sender.id
+        text=ev.message.text
+      }
 
-          if (!response.ok) {
-            console.log("Messenger AI error:", response.status);
-            continue;
-          }
+      if(ev.value&&ev.value.messages){
+        sender_psid=ev.value.messages[0].from.id
+        text=ev.value.messages[0].text
+      }
 
-          const { reply } = await response.json();
+      if(!sender_psid||!text) continue
 
-          if (reply) {
-            await sendMessengerMessage(sender_psid, reply);
-          }
+      console.log("MESSAGE FROM:",sender_psid)
+      console.log("TEXT:",text)
 
-        } catch (err) {
-          console.log("Messenger error:", err.message);
+      try{
+
+        const response=await fetch(`${APP_URL}/api/ai/respond`,{
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "x-api-key":AI_SECRET_KEY
+          },
+          body:JSON.stringify({
+            branchId:BRANCH_ID,
+            phone:sender_psid,
+            message:text
+          })
+        })
+
+        if(!response.ok){
+          console.log("AI error:",response.status)
+          continue
         }
 
+        const {reply}=await response.json()
+
+        if(reply){
+
+          await fetch(`https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,{
+            method:"POST",
+            headers:{
+              "Content-Type":"application/json"
+            },
+            body:JSON.stringify({
+              recipient:{id:sender_psid},
+              message:{text:reply}
+            })
+          })
+
+        }
+
+      }catch(err){
+
+        console.log("Webhook error:",err.message)
+
       }
+
     }
 
-    res.status(200).send("EVENT_RECEIVED");
-
-  } else {
-    res.sendStatus(200);
   }
 
-});
+  res.status(200).send("EVENT_RECEIVED")
 
+})
 
-/* إرسال رسالة ماسنجر */
-async function sendMessengerMessage(sender_psid, text) {
+app.listen(process.env.PORT||3000,()=>console.log("Server running"))
 
-  try {
-
-    await fetch(
-      `https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipient: { id: sender_psid },
-          message: { text: text }
-        })
-      }
-    );
-
-  } catch (err) {
-    console.log("Messenger send error:", err.message);
-  }
-
-}
-app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
-module.exports = {client}
 
-
-
-
-
+module.exports={client}
