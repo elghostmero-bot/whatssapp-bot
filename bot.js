@@ -192,6 +192,7 @@ app.post("/webhook",async(req,res)=>{
       }
 
       if(ev.value && ev.value.messages){
+        console.log("INSTAGRAM EVENT:", JSON.stringify(ev,null,2))
   sender_psid = ev.value.messages[0].from.id
   text = ev.value.messages[0].text || ev.value.messages[0].message
 }
