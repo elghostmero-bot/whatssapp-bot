@@ -7,8 +7,8 @@ const { Client, LocalAuth } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
 
 // ← متغيرات البيئة الجديدة في Railway
-const APP_URL       = process.env.APP_URL         https://samiamakeupartist.replit.app/
-const AI_SECRET_KEY = process.env.AI_SECRET_KEY   cinderella-bot-api-2026
+const APP_URL       = process.env.APP_URL       //  https://samiamakeupartist.replit.app/
+const AI_SECRET_KEY = process.env.AI_SECRET_KEY  // cinderella-bot-api-2026
 const BRANCH_ID     = Number(process.env.BRANCH_ID || 1)
 const FB_PAGE_TOKEN = process.env.FB_PAGE_TOKEN
 
