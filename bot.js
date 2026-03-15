@@ -62,6 +62,29 @@ function isIgnored(text){
 /* واتساب */
 
 client.on("message", async msg => {
+  if (msg.type === "ptt" || msg.type === "audio") {
+
+  try {
+
+    console.log("VOICE MESSAGE RECEIVED")
+
+    const media = await msg.downloadMedia()
+
+    if (!media) return
+
+    const buffer = Buffer.from(media.data, "base64")
+
+    require("fs").writeFileSync("voice.ogg", buffer)
+
+    console.log("VOICE SAVED")
+
+  } catch (err) {
+
+    console.log("VOICE ERROR:", err.message)
+
+  }
+
+}
   if(msg.fromMe) return
   if(msg.from === "status@broadcast") return
   if(msg.from.includes("@g.us")) return
