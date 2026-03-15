@@ -77,6 +77,29 @@ client.on("message", async msg => {
     require("fs").writeFileSync("voice.ogg", buffer)
 
     console.log("VOICE SAVED")
+    const form = new FormData()
+
+form.append("file", fs.createReadStream("voice.ogg"))
+form.append("model","whisper-1")
+
+const whisper = await fetch(
+  "https://api.openai.com/v1/audio/transcriptions",
+  {
+    method:"POST",
+    headers:{
+      Authorization:`Bearer ${process.env.OPENAI_API_KEY}`
+    },
+    body:form
+  }
+)
+
+const data = await whisper.json()
+
+const voiceText = data.text
+
+console.log("VOICE TEXT:",voiceText)
+
+msg.body = voiceText
 
   } catch (err) {
 
