@@ -22,7 +22,13 @@ const client = new Client({
   }
 })
 
-client.on("qr", qr => qrcode.generate(qr, { small: true }))
+let currentQR = null
+
+client.on("qr", async qr => {
+  qrcode.generate(qr, { small: true })
+  currentQR = await require("qrcode").toDataURL(qr)
+  console.log("QR ready at /qr")
+})
 client.on("authenticated", () => console.log("WhatsApp authenticated"))
 client.on("ready",        () => console.log("WhatsApp Bot Ready"))
 
@@ -182,5 +188,25 @@ app.post("/webhook",async(req,res)=>{
 
 app.get("/", (req,res) => res.send("WhatsApp bot is running"))
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
+
+app.get("/qr",(req,res)=>{
+
+  if(!currentQR){
+    return res.send("<h2>QR لسه ما اتولدش</h2>")
+  }
+
+  res.send(`
+  <html>
+  <body style="text-align:center;padding:40px">
+
+  <h2>Scan WhatsApp QR</h2>
+
+  <img src="${currentQR}" width="300"/>
+
+  </body>
+  </html>
+  `)
+
+})
 client.initialize()
 module.exports = {client}
