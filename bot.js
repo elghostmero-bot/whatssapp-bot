@@ -141,33 +141,35 @@ if(entry.changes){
 
     if(change.field === "feed" && change.value.comment_id){
 
-      const comment = change.value.message
-      const comment_id = change.value.comment_id
+  const comment = change.value.message
+  const comment_id = change.value.comment_id
 
-      console.log("NEW COMMENT:", comment)
+  console.log("NEW COMMENT:", comment)
 
-      try{
+  try{
 
-        await fetch(
-          `https://graph.facebook.com/v18.0/${comment_id}/comments?access_token=${FB_PAGE_TOKEN}`,
-          {
-            method:"POST",
-            headers:{ "Content-Type":"application/json" },
-            body:JSON.stringify({
-              message:"أهلاً ❤️ ابعتلنا رسالة ماسنجر وهنرد عليك فوراً."
-            })
-          }
-        )
-
-      }catch(err){
-        console.log("COMMENT ERROR:",err.message)
+    const reply = await fetch(
+      `https://graph.facebook.com/v18.0/${comment_id}/comments?access_token=${FB_PAGE_TOKEN}`,
+      {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body:JSON.stringify({
+          message:"أهلاً ❤️ ابعتلنا رسالة ماسنجر وهنبعتلك التفاصيل."
+        })
       }
+    )
 
-    }
+    const result = await reply.text()
+    console.log("COMMENT REPLY:", result)
 
+  }catch(err){
+    console.log("COMMENT ERROR:",err.message)
   }
 
 }
+    }
+
+  }
     const events = entry.messaging || entry.changes || entry.standby
     if(!events) continue
 
