@@ -1,8 +1,12 @@
 const FB_PAGE_TOKEN = "EAA49g0ZBaS9QBQzE5IedQ0gJRXkEd0iEWVPWrHNwHfgeKyBuPgPcap25PAFmwGQ4oitlATDOmZA2Ult9baZC20dbauaXJPZAPvh30vNQRE4WWXcCIxhY6o28ryKTZAtD1h25Rk2Tg6fSjd1IFKLGQIbHsVnhWmlJDGuJZCQkB6Ot1WP4tv4ZB7UTDoDtnvXOMhKAmKyYMVqJthLomiJnqwBmf2enAZDZD"
 const IG_PAGE_TOKEN = "EAA49g0ZBaS9QBQzE5IedQ0gJRXkEd0iEWVPWrHNwHfgeKyBuPgPcap25PAFmwGQ4oitlATDOmZA2Ult9baZC20dbauaXJPZAPvh30vNQRE4WWXcCIxhY6o28ryKTZAtD1h25Rk2Tg6fSjd1IFKLGQIbHsVnhWmlJDGuJZCQkB6Ot1WP4tv4ZB7UTDoDtnvXOMhKAmKyYMVqJthLomiJnqwBmf2enAZDZD"
-const fs = require("fs")
 const express = require("express")
 const app = express()
+
+const fs = require("fs")
+const FormData = require("form-data")
+
+const { Client, LocalAuth } = require("whatsapp-web.js")
 app.use(express.json({ limit: "20mb" }))
 
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args))
