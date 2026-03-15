@@ -133,7 +133,41 @@ app.post("/webhook",async(req,res)=>{
   }
 
   for(const entry of body.entry){
+/* Facebook comments */
 
+if(entry.changes){
+
+  for(const change of entry.changes){
+
+    if(change.field === "feed" && change.value.comment_id){
+
+      const comment = change.value.message
+      const comment_id = change.value.comment_id
+
+      console.log("NEW COMMENT:", comment)
+
+      try{
+
+        await fetch(
+          `https://graph.facebook.com/v18.0/${comment_id}/comments?access_token=${FB_PAGE_TOKEN}`,
+          {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body:JSON.stringify({
+              message:"أهلاً ❤️ ابعتلنا رسالة ماسنجر وهنرد عليك فوراً."
+            })
+          }
+        )
+
+      }catch(err){
+        console.log("COMMENT ERROR:",err.message)
+      }
+
+    }
+
+  }
+
+}
     const events = entry.messaging || entry.changes || entry.standby
     if(!events) continue
 
