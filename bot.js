@@ -17,9 +17,19 @@ const ADMIN_NUMBER  = "201098266665@c.us"
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: "samia-bot" }),
   puppeteer: {
-    headless: true,
-    args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
-  }
+  headless: true,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-software-rasterizer",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--disable-background-timer-throttling",
+    "--disable-renderer-backgrounding"
+  ]
+}
 })
 
 let currentQR = null
