@@ -13,9 +13,6 @@ const QRCode = require("qrcode")
 
 // لو بتستخدم fetch بالطريقة دي في الكود
 const fetch = (...args) => import("node-fetch").then(({ default: fetch }) => fetch(...args))
-const qrcode = require("qrcode-terminal")
-const QRCode = require("qrcode")
-
 const APP_URL = process.env.APP_URL
 const AI_SECRET_KEY = process.env.AI_SECRET_KEY
 const BRANCH_ID = Number(process.env.BRANCH_ID || 1)
