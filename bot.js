@@ -26,11 +26,15 @@ const client = new Client({
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
-      "--disable-gpu"
+      "--disable-gpu",
+      "--single-process",
+      "--no-zygote"
     ]
   }
 })
-
+client.on("loading_screen", (percent, message) => {
+  console.log("LOADING:", percent, message)
+})
 client.on("qr", async qr => {
   qrcode.generate(qr, { small: true })
   currentQR = await QRCode.toDataURL(qr)
