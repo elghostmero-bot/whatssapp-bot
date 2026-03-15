@@ -62,44 +62,6 @@ function isIgnored(text){
 /* واتساب */
 
 client.on("message", async msg => {
-const fs = require("fs")
-const FormData = require("form-data")
-  if(msg.hasMedia){
-
-  const media = await msg.downloadMedia()
-
-  if(media.mimetype.includes("audio")){
-
-    const buffer = Buffer.from(media.data,'base64')
-    const filePath = "./voice.ogg"
-
-    fs.writeFileSync(filePath, buffer)
-
-    const form = new FormData()
-    form.append("file", fs.createReadStream(filePath))
-    form.append("model","whisper-1")
-
-    const transcription = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions",
-      {
-        method:"POST",
-        headers:{
-          Authorization:`Bearer ${process.env.OPENAI_API_KEY}`
-        },
-        body:form
-      }
-    )
-
-    const data = await transcription.json()
-
-    const text = data.text
-
-    console.log("VOICE TEXT:",text)
-
-    msg.body = text
-  }
-
-}
   if(msg.fromMe) return
   if(msg.from === "status@broadcast") return
   if(msg.from.includes("@g.us")) return
