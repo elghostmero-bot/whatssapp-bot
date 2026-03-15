@@ -261,6 +261,20 @@ if(entry.changes){
   res.status(200).send("EVENT_RECEIVED")
 
 })
+app.get("/qr",(req,res)=>{
+  if(!currentQR){
+    return res.send("<h2>No QR yet</h2>")
+  }
+
+  res.send(`
+  <html>
+  <body style="text-align:center;padding:40px">
+  <h2>Scan WhatsApp QR</h2>
+  <img src="${currentQR}" width="300"/>
+  </body>
+  </html>
+  `)
+})
 
 app.listen(process.env.PORT||3000,()=>console.log("Server running"))
 
