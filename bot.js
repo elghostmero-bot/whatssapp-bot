@@ -1,10 +1,6 @@
-
 const express = require("express")
 const app = express()
 app.use(express.json({ limit: "20mb" }))
-
-const fs = require("fs")
-const FormData = require("form-data")
 
 const { Client, LocalAuth } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
@@ -17,7 +13,6 @@ const AI_SECRET_KEY = process.env.AI_SECRET_KEY
 const BRANCH_ID = Number(process.env.BRANCH_ID || 1)
 
 const FB_PAGE_TOKEN = process.env.FB_PAGE_TOKEN
-const IG_PAGE_TOKEN = process.env.IG_PAGE_TOKEN
 
 let currentQR = null
 
@@ -42,8 +37,13 @@ client.on("qr", async qr => {
   console.log("QR ready at /qr")
 })
 
-client.on("authenticated", () => console.log("WhatsApp authenticated"))
-client.on("ready", () => console.log("WhatsApp Bot Ready"))
+client.on("authenticated", () => {
+  console.log("WhatsApp authenticated")
+})
+
+client.on("ready", () => {
+  console.log("WhatsApp Bot Ready")
+})
 
 function formatNumber(num){
   num = num.replace(/\D/g,"")
@@ -65,7 +65,7 @@ function isIgnored(text){
   return ["ok","okay","تمام","تم","شكرا","شكراً","thanks","thx","👍","👌"].includes(low)
 }
 
-/* استقبال واتساب */
+/* استقبال رسائل واتساب */
 
 client.on("message", async msg => {
 
@@ -73,53 +73,7 @@ client.on("message", async msg => {
   if(msg.from === "status@broadcast") return
   if(msg.from.includes("@g.us")) return
 
-  let text = msg.body
-
-  /* تحويل الصوت لنص */
-
-//  if (msg.type === "ptt" || msg.type === "audio") {
-//
-  //  try {
-//
-  //    console.log("VOICE MESSAGE RECEIVED")
-//
-  //    const media = await msg.downloadMedia()
-    //  if(!media) return
-//
-  //    const buffer = Buffer.from(media.data, "base64")
-    //  fs.writeFileSync("voice.ogg", buffer)
-//
-  //    console.log("VOICE SAVED")
-//
-//      const form = new FormData()
-    //  form.append("file", fs.createReadStream("voice.ogg"))
-  //    form.append("model","whisper-1")
-//
-      const whisper = await fetch(
-       // "https://api.openai.com/v1/audio/transcriptions",
-     //   {
-   //       method:"POST",
- //         headers:{
-          //  Authorization:`Bearer ${process.env.OPENAI_API_KEY}`
-        //  },
-      //    body:form
-    //    }
-  //    )
-//
-  //    const data = await whisper.json()
-//
-  //    text = data.text || ""
-//
-  //    console.log("VOICE TEXT:",text)
-//
-  //  }catch(err){
-//
-    //  console.log("VOICE ERROR:",err.message)
-  //    return
-//
-  //  }
-//
-//  }
+  const text = msg.body
 
   if(isIgnored(text)) return
 
@@ -154,9 +108,7 @@ client.on("message", async msg => {
     }
 
   }catch(err){
-
     console.log("WhatsApp error:",err.message)
-
   }
 
 })
@@ -235,9 +187,7 @@ app.post("/webhook",async(req,res)=>{
         )
 
       }catch(err){
-
         console.log("Messenger error:",err.message)
-
       }
 
     }
