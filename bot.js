@@ -64,52 +64,96 @@ function isIgnored(text){
 /* واتساب */
 
 client.on("message", async msg => {
+
+  if(msg.fromMe) return
+  if(msg.from === "status@broadcast") return
+  if(msg.from.includes("@g.us")) return
+
+  let text = msg.body
+
+  /* لو الرسالة صوت */
+
   if (msg.type === "ptt" || msg.type === "audio") {
 
-  try {
+    try {
 
-    console.log("VOICE MESSAGE RECEIVED")
+      console.log("VOICE MESSAGE RECEIVED")
 
-    const media = await msg.downloadMedia()
+      const media = await msg.downloadMedia()
+      if (!media) return
 
-    if (!media) return
+      const buffer = Buffer.from(media.data, "base64")
+      fs.writeFileSync("voice.ogg", buffer)
 
-    const buffer = Buffer.from(media.data, "base64")
+      console.log("VOICE SAVED")
 
-    require("fs").writeFileSync("voice.ogg", buffer)
+      const form = new FormData()
+      form.append("file", fs.createReadStream("voice.ogg"))
+      form.append("model","whisper-1")
 
-    console.log("VOICE SAVED")
-    const form = new FormData()
+      const whisper = await fetch(
+        "https://api.openai.com/v1/audio/transcriptions",
+        {
+          method:"POST",
+          headers:{
+            Authorization:`Bearer ${process.env.OPENAI_API_KEY}`
+          },
+          body:form
+        }
+      )
 
-form.append("file", fs.createReadStream("voice.ogg"))
-form.append("model","whisper-1")
+      const data = await whisper.json()
 
-const whisper = await fetch(
-  "https://api.openai.com/v1/audio/transcriptions",
-  {
-    method:"POST",
-    headers:{
-      Authorization:`Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body:form
+      text = data.text || ""
+
+      console.log("VOICE TEXT:", text)
+
+    } catch (err) {
+
+      console.log("VOICE ERROR:", err.message)
+      return
+
+    }
+
   }
-)
 
-const data = await whisper.json()
+  if(isIgnored(text)) return
 
-const voiceText = data.text
+  const phone = formatNumber(msg.from.replace("@c.us",""))
 
-console.log("VOICE TEXT:",voiceText)
+  try{
 
-msg.body = voiceText
+    await humanDelay(2000,4500)
 
-  } catch (err) {
+    const res = await fetch(`${APP_URL}/api/ai/respond`,{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "x-api-key":AI_SECRET_KEY
+      },
+      body:JSON.stringify({
+        branchId:BRANCH_ID,
+        phone,
+        message:text
+      })
+    })
 
-    console.log("VOICE ERROR:", err.message)
+    if(!res.ok){
+      console.log("AI API error:",res.status)
+      return
+    }
 
+    const {reply} = await res.json()
+
+    if(reply){
+      await msg.reply(reply)
+    }
+
+  }catch(err){
+    console.log("WhatsApp error:",err.message)
   }
 
-}
+})
   if(msg.fromMe) return
   if(msg.from === "status@broadcast") return
   if(msg.from.includes("@g.us")) return
