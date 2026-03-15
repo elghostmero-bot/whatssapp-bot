@@ -77,49 +77,49 @@ client.on("message", async msg => {
 
   /* تحويل الصوت لنص */
 
-  if (msg.type === "ptt" || msg.type === "audio") {
-
-    try {
-
-      console.log("VOICE MESSAGE RECEIVED")
-
-      const media = await msg.downloadMedia()
-      if(!media) return
-
-      const buffer = Buffer.from(media.data, "base64")
-      fs.writeFileSync("voice.ogg", buffer)
-
-      console.log("VOICE SAVED")
-
-      const form = new FormData()
-      form.append("file", fs.createReadStream("voice.ogg"))
-      form.append("model","whisper-1")
-
+//  if (msg.type === "ptt" || msg.type === "audio") {
+//
+  //  try {
+//
+  //    console.log("VOICE MESSAGE RECEIVED")
+//
+  //    const media = await msg.downloadMedia()
+    //  if(!media) return
+//
+  //    const buffer = Buffer.from(media.data, "base64")
+    //  fs.writeFileSync("voice.ogg", buffer)
+//
+  //    console.log("VOICE SAVED")
+//
+//      const form = new FormData()
+    //  form.append("file", fs.createReadStream("voice.ogg"))
+  //    form.append("model","whisper-1")
+//
       const whisper = await fetch(
-        "https://api.openai.com/v1/audio/transcriptions",
-        {
-          method:"POST",
-          headers:{
-            Authorization:`Bearer ${process.env.OPENAI_API_KEY}`
-          },
-          body:form
-        }
-      )
-
-      const data = await whisper.json()
-
-      text = data.text || ""
-
-      console.log("VOICE TEXT:",text)
-
-    }catch(err){
-
-      console.log("VOICE ERROR:",err.message)
-      return
-
-    }
-
-  }
+       // "https://api.openai.com/v1/audio/transcriptions",
+     //   {
+   //       method:"POST",
+ //         headers:{
+          //  Authorization:`Bearer ${process.env.OPENAI_API_KEY}`
+        //  },
+      //    body:form
+    //    }
+  //    )
+//
+  //    const data = await whisper.json()
+//
+  //    text = data.text || ""
+//
+  //    console.log("VOICE TEXT:",text)
+//
+  //  }catch(err){
+//
+    //  console.log("VOICE ERROR:",err.message)
+  //    return
+//
+  //  }
+//
+//  }
 
   if(isIgnored(text)) return
 
