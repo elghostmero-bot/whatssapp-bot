@@ -1,257 +1,191 @@
+
 const express = require("express")
 const app = express()
-
 app.use(express.json({ limit: "20mb" }))
 
-const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js")
+const { Client, LocalAuth } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
-const fs = require("fs")
-const OpenAI = require("openai")
+const FB_PAGE_TOKEN = process.env.FB_PAGE_TOKEN
 
-const salonData = fs.readFileSync("salon-data.txt","utf8")
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
+// ← متغيرات البيئة الجديدة في Railway
+const APP_URL       = process.env.APP_URL         // https://samiamakeupartist.replit.app
+const AI_SECRET_KEY = process.env.AI_SECRET_KEY   // من Replit Secrets
+const BRANCH_ID     = Number(process.env.BRANCH_ID || 1)
+const ADMIN_NUMBER  = "201098266665@c.us"
 
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: "samia-bot" }),
-  puppeteer:{
-    headless:true,
-    args:[
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu"
-    ]
+  puppeteer: {
+    headless: true,
+    args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
   }
 })
 
-/* ضع رقمك هنا */
-const ADMIN_NUMBER = "201098266665@c.us"
+let currentQR = null
 
-/* وضع التدريب */
-let trainingMode = false
-let trainingEnd = 0
-let lastQuestion = null
-
-/* QR */
-client.on("qr", qr => qrcode.generate(qr, { small: true }))
-
-client.on("authenticated",()=>console.log("WhatsApp authenticated"))
-client.on("ready",()=>console.log("WhatsApp Bot Ready"))
+client.on("qr", async qr => {
+  qrcode.generate(qr, { small: true })
+  currentQR = await require("qrcode").toDataURL(qr)
+  console.log("QR ready at /qr")
+})
+client.on("authenticated", () => console.log("WhatsApp authenticated"))
+client.on("ready",        () => console.log("WhatsApp Bot Ready"))
 
 function formatNumber(num){
   num = num.replace(/\D/g,"")
-  if(num.startsWith("20")) return num
-  if(num.startsWith("0")) return "20"+num.slice(1)
-  if(num.length===10) return "20"+num
+  if(num.startsWith("20"))  return num
+  if(num.startsWith("0"))   return "20"+num.slice(1)
+  if(num.length === 10)     return "20"+num
   return num
 }
 
-function humanDelay(min=1500,max=4000){
-  const ms = min + Math.random()*(max-min)
-  return new Promise(r=>setTimeout(r,ms))
+function humanDelay(min=1500, max=4000){
+  return new Promise(r => setTimeout(r, min + Math.random()*(max-min)))
 }
 
-function isEmojiOnly(text){
-  const cleaned=text.replace(/[\p{Emoji}\u200d\u2640-\u2642\uFE0F]/gu,'').trim()
-  return cleaned.length===0
+function isIgnored(text){
+  if(!text) return true
+  const cleaned = text.replace(/[\p{Emoji}\u200d\u2640-\u2642\uFE0F]/gu,"").trim()
+  if(!cleaned) return true
+  const low = text.trim().toLowerCase()
+  return ["ok","okay","تمام","تم","شكرا","شكراً","thanks","thx","👍","👌"].includes(low)
 }
 
-function isLowValueMessage(text){
-  const msg=text.trim().toLowerCase()
-  const ignore=["ok","okay","تمام","تم","شكرا","شكراً","thanks","thx","👍","👌"]
-  return ignore.includes(msg)
-}
+/* استقبال رسائل العملاء */
+client.on("message", async msg => {
+  if(msg.fromMe)                         return
+  if(msg.from === "status@broadcast")    return
+  if(msg.from.includes("@g.us"))         return
+  if(isIgnored(msg.body))                return
 
-function loadMemory(){
-  try{
-    return JSON.parse(fs.readFileSync("ai-memory.json"))
-  }catch{
-    return []
-  }
-}
-
-function saveMemory(question,answer){
-  let memory = loadMemory()
-  memory.push({
-    question:question,
-    answer:answer
-  })
-  fs.writeFileSync("ai-memory.json",JSON.stringify(memory,null,2))
-}
-
-/* فحص هل السؤال موجود بالفعل */
-function questionExists(question){
-
-  const q = question.toLowerCase()
-
-  if(salonData.toLowerCase().includes(q)) return true
-
-  const memory = loadMemory()
-
-  for(const item of memory){
-    if(item.question.toLowerCase().includes(q) || q.includes(item.question.toLowerCase())){
-      return true
-    }
-  }
-
-  return false
-}
-
-/* استقبال الرسائل */
-
-client.on("message", async message=>{
-
-  if(!message.body) return
-  if(message.from==="status@broadcast") return
-  if(message.from.includes("@g.us")) return
-
-  /* تشغيل التدريب */
-  if(message.from === ADMIN_NUMBER && message.body.startsWith("تدريب")){
-
-    const minutes = parseInt(message.body.split(" ")[1]) || 30
-
-    trainingMode = true
-    trainingEnd = Date.now() + minutes*60000
-
-    await client.sendMessage(
-      ADMIN_NUMBER,
-      "تم تشغيل وضع التدريب لمدة "+minutes+" دقيقة"
-    )
-
-    return
-  }
-
-  /* التعلم من ردك */
-  if(message.fromMe && lastQuestion){
-
-    saveMemory(lastQuestion,message.body)
-
-    console.log("Learned new reply")
-
-    lastQuestion = null
-    return
-  }
-
-  if(isEmojiOnly(message.body)) return
-  if(isLowValueMessage(message.body)) return
+  const phone = formatNumber(msg.from.replace("@c.us",""))
 
   try{
+    await humanDelay(2000, 4500)
 
-    await humanDelay(2000,4500)
-
-    let memory = loadMemory()
-
-    let memoryText = memory
-      .map(x=>"سؤال: "+x.question+"\nالرد: "+x.answer)
-      .join("\n\n")
-
-    const ai = await openai.chat.completions.create({
-      model:"gpt-4o-mini",
-      messages:[
-        {
-          role:"system",
-          content:`انت موظف خدمة عملاء لصالون تجميل.
-
-هذه معلومات الصالون:
-
-${salonData}
-
-هذه ردود تعلمتها من صاحب الصالون:
-
-${memoryText}
-
-استخدم هذه الردود عندما تكون مناسبة.
-
-الرد يكون قصير وباللهجة المصرية.`
-        },
-        {
-          role:"user",
-          content:message.body
-        }
-      ]
+    // ← هنا بيسأل تطبيقك بدل الملف الثابت
+    const res = await fetch(`${APP_URL}/api/ai/respond`, {
+      method:  "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key":    AI_SECRET_KEY
+      },
+      body: JSON.stringify({ branchId: BRANCH_ID, phone, message: msg.body })
     })
 
-    const reply = ai.choices?.[0]?.message?.content
+    if(!res.ok){
+      console.log("AI API error:", res.status, await res.text())
+      return
+    }
 
-    if(!reply) return
+    const { reply } = await res.json()
+    if(reply) await msg.reply(reply)
 
-    /* أثناء التدريب */
+  }catch(err){
+    console.log("ERROR:", err.message)
+  }
+})
 
-    if(trainingMode){
+/* إرسال رسالة من التطبيق */
+app.post("/send-message", async(req,res)=>{
+  let { phone, message } = req.body
+  if(!phone || !message) return res.status(400).json({error:"phone and message required"})
+  phone = formatNumber(phone)
+  try{
+    await humanDelay(1500, 4000)
+    await client.sendMessage(phone+"@c.us", message)
+    res.json({success:true})
+  }catch(err){
+    res.status(500).json({error: err.message})
+  }
+})
+/* استقبال ماسنجر */
 
-      if(Date.now() > trainingEnd){
-        trainingMode = false
-        console.log("Training ended")
-      }else{
+app.post("/webhook",async(req,res)=>{
 
-        if(!questionExists(message.body)){
+  const body=req.body
 
-          lastQuestion = message.body
+  if(body.object!=="page") return res.sendStatus(200)
 
-          await client.sendMessage(
-            ADMIN_NUMBER,
-            "سؤال العميل:\n"+message.body+"\n\nرد AI:\n"+reply
-          )
+  for(const entry of body.entry){
 
-          return
-        }
+    const events = entry.messaging
+    if(!events) continue
 
+    for(const ev of events){
+
+      if(!ev.sender || !ev.message) continue
+
+      const sender_psid = ev.sender.id
+      const text = ev.message.text
+
+      if(!text) continue
+
+      try{
+
+        const ai = await fetch(`${APP_URL}/api/ai/respond`,{
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "x-api-key":AI_SECRET_KEY
+          },
+          body:JSON.stringify({
+            branchId:BRANCH_ID,
+            phone:sender_psid,
+            message:text
+          })
+        })
+
+        const {reply} = await ai.json()
+
+        if(!reply) continue
+
+        await fetch(
+          `https://graph.facebook.com/v18.0/me/messages?access_token=${FB_PAGE_TOKEN}`,
+          {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body:JSON.stringify({
+              messaging_type:"RESPONSE",
+              recipient:{ id: sender_psid },
+              message:{ text: reply }
+            })
+          }
+        )
+
+      }catch(err){
+        console.log("Messenger error:",err.message)
       }
 
     }
 
-    await message.reply(reply)
-
-  }catch(err){
-    console.log("AI ERROR:",err.message)
   }
 
+  res.status(200).send("EVENT_RECEIVED")
+
 })
+app.get("/qr",(req,res)=>{
 
-/* ارسال رسالة */
-
-app.post("/send-message", async(req,res)=>{
-
-  let {phone,message}=req.body
-
-  if(!phone || !message)
-    return res.status(400).json({error:"phone and message required"})
-
-  phone=formatNumber(phone)
-
-  try{
-
-    await humanDelay(1500,4000)
-
-    await client.sendMessage(phone+"@c.us",message)
-
-    console.log("Message sent to",phone)
-
-    res.json({success:true})
-
-  }catch(err){
-
-    console.log("SEND MESSAGE ERROR:",err.message)
-
-    res.status(500).json({error:err.message})
+  if(!currentQR){
+    return res.send("<h2>QR لسه ما اتولدش</h2>")
   }
 
+  res.send(`
+  <html>
+  <body style="text-align:center;padding:40px">
+
+  <h2>Scan WhatsApp QR</h2>
+
+  <img src="${currentQR}" width="300"/>
+
+  </body>
+  </html>
+  `)
+
 })
 
-app.get("/",(req,res)=>{
-  res.send("WhatsApp bot is running")
-})
-
-const PORT = process.env.PORT || 3000
-
-app.listen(PORT,()=>{
-  console.log("Server running on port "+PORT)
-})
-
+app.get("/", (req,res) => res.send("WhatsApp bot is running"))
+app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
-
-module.exports={client}
-
+module.exports = {client}
