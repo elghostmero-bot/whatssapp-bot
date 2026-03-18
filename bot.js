@@ -104,13 +104,36 @@ async function getAIReply({ phone, message, imageBase64, messageType }) {
   }
 }
 
+/* تحويل الأرقام في النص لكلمات عربية عشان TTS ينطقها صح */
+async function prepareTextForTTS(text) {
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: "أنت مساعد متخصص في تحويل النصوص للنطق الصوتي العربي. مهمتك: حوّل كل الأرقام (الإنجليزية والعربية) في النص لكلمات عربية منطوقة بشكل طبيعي. مثال: 3500 → ثلاثة آلاف وخمسمائة، 2 → اثنين، 10:30 → العاشرة والنصف. أرجع النص كاملاً مع الأرقام محوّلة فقط، بدون أي تعليق أو إضافة."
+        },
+        { role: "user", content: text }
+      ],
+      max_tokens: 800,
+      temperature: 0.1,
+    })
+    return completion.choices?.[0]?.message?.content || text
+  } catch (err) {
+    console.error("prepareTextForTTS error:", err.message)
+    return text
+  }
+}
+
 /* تحويل النص لصوت OGG مباشرةً باستخدام OpenAI TTS (بدون ffmpeg) */
 async function textToVoiceBase64(text) {
   try {
+    const ttsText = await prepareTextForTTS(text)
     const response = await openai.audio.speech.create({
       model: "tts-1",
       voice: "nova",
-      input: text,
+      input: ttsText,
       response_format: "opus",
     })
     const buffer = Buffer.from(await response.arrayBuffer())
@@ -270,7 +293,7 @@ app.get("/qr", (req, res) => {
   res.send(`<html><body style="text-align:center;padding:40px"><h2>Scan WhatsApp QR</h2><img src="${currentQR}" width="300"/></body></html>`)
 })
 
-app.get("/", (req, res) => res.send("WhatsApp bot is running — v4 (voice reply no ffmpeg)"))
+app.get("/", (req, res) => res.send("WhatsApp bot is running — v5 (voice reply + arabic numbers)"))
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = { client }
