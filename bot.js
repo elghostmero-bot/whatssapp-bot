@@ -5,6 +5,10 @@ app.use(express.json({ limit: "20mb" }))
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
 const OpenAI = require("openai")
+const fs = require("fs")
+const os = require("os")
+const path = require("path")
+const { execFile } = require("child_process")
 
 const FB_PAGE_TOKEN = process.env.FB_PAGE_TOKEN
 const APP_URL       = process.env.APP_URL
@@ -26,6 +30,7 @@ let currentQR = null
 client.on("qr", async qr => {
   qrcode.generate(qr, { small: true })
   currentQR = await require("qrcode").toDataURL(qr)
+  console.log("QR ready at /qr")
 })
 client.on("authenticated", () => console.log("WhatsApp authenticated"))
 client.on("ready",         () => console.log("WhatsApp Bot Ready"))
@@ -50,6 +55,21 @@ function isIgnoredText(text) {
   return ["ok","okay","تمام","تم","شكرا","شكراً","thanks","thx","👍","👌"].includes(low)
 }
 
+/* جلب إعدادات البوت من السيرفر */
+async function getBotSettings() {
+  try {
+    const res = await fetch(`${APP_URL}/api/branches/${BRANCH_ID}/bot-settings`, {
+      headers: { "x-api-key": AI_SECRET_KEY },
+    })
+    if (!res.ok) return { botActive: true, voiceReply: false }
+    return await res.json()
+  } catch (err) {
+    console.error("getBotSettings error:", err.message)
+    return { botActive: true, voiceReply: false }
+  }
+}
+
+/* تحويل الصوت لنص باستخدام Whisper */
 async function transcribeAudio(audioBase64, mimeType) {
   try {
     const audioBuffer = Buffer.from(audioBase64, "base64")
@@ -57,23 +77,29 @@ async function transcribeAudio(audioBase64, mimeType) {
     const { toFile } = require("openai")
     const audioFile = await toFile(audioBuffer, `audio.${ext}`, { type: mimeType || "audio/ogg" })
     const transcription = await openai.audio.transcriptions.create({
-      file: audioFile, model: "whisper-1", language: "ar",
+      file:     audioFile,
+      model:    "whisper-1",
+      language: "ar",
     })
     return transcription.text || null
   } catch (err) {
-    console.error("Whisper error:", err.message)
+    console.error("Whisper transcription error:", err.message)
     return null
   }
 }
 
+/* إرسال الرسالة للـ AI وجلب الرد */
 async function getAIReply({ phone, message, imageBase64, messageType }) {
   try {
     const res = await fetch(`${APP_URL}/api/ai/respond`, {
-      method: "POST",
+      method:  "POST",
       headers: { "Content-Type": "application/json", "x-api-key": AI_SECRET_KEY },
-      body: JSON.stringify({ branchId: BRANCH_ID, phone, message, imageBase64, messageType }),
+      body:    JSON.stringify({ branchId: BRANCH_ID, phone, message, imageBase64, messageType }),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      console.log("AI API error:", res.status, await res.text())
+      return null
+    }
     const { reply } = await res.json()
     return reply || null
   } catch (err) {
@@ -82,14 +108,56 @@ async function getAIReply({ phone, message, imageBase64, messageType }) {
   }
 }
 
+/* تحويل النص لصوت OGG (voice note) باستخدام OpenAI TTS + ffmpeg */
+async function textToVoiceBase64(text) {
+  const tmpMp3 = path.join(os.tmpdir(), `tts_${Date.now()}.mp3`)
+  const tmpOgg = path.join(os.tmpdir(), `tts_${Date.now()}.ogg`)
+  try {
+    // OpenAI TTS → MP3
+    const mp3Response = await openai.audio.speech.create({
+      model: "tts-1",
+      voice: "nova",
+      input: text,
+    })
+    const mp3Buffer = Buffer.from(await mp3Response.arrayBuffer())
+    fs.writeFileSync(tmpMp3, mp3Buffer)
+
+    // ffmpeg: MP3 → OGG OPUS (صيغة واتساب)
+    await new Promise((resolve, reject) => {
+      execFile("ffmpeg", [
+        "-y", "-i", tmpMp3,
+        "-c:a", "libopus",
+        "-b:a", "32k",
+        "-vbr", "on",
+        tmpOgg
+      ], (err) => {
+        if (err) reject(err)
+        else resolve()
+      })
+    })
+
+    const oggBuffer = fs.readFileSync(tmpOgg)
+    return oggBuffer.toString("base64")
+  } catch (err) {
+    console.error("TTS/ffmpeg error:", err.message)
+    return null
+  } finally {
+    try { fs.unlinkSync(tmpMp3) } catch {}
+    try { fs.unlinkSync(tmpOgg) } catch {}
+  }
+}
+
+/* استقبال رسائل واتساب */
 client.on("message", async msg => {
-  if (msg.fromMe) return
+  if (msg.fromMe)                      return
   if (msg.from === "status@broadcast") return
-  if (msg.from.includes("@g.us")) return
+  if (msg.from.includes("@g.us"))      return
 
   const phone = formatNumber(msg.from.replace("@c.us", ""))
+
   await humanDelay(2000, 4500)
 
+  /* رسالة نصية */
   if (msg.type === "chat") {
     if (isIgnoredText(msg.body)) return
     const reply = await getAIReply({ phone, message: msg.body, messageType: "text" })
@@ -97,32 +165,66 @@ client.on("message", async msg => {
     return
   }
 
+  /* رسالة صوتية (voice note أو audio) */
   if (msg.type === "ptt" || msg.type === "audio") {
     try {
+      console.log(`Voice message from ${phone}`)
       const media = await msg.downloadMedia()
       if (!media?.data) return
+
       const transcribed = await transcribeAudio(media.data, media.mimetype)
       if (!transcribed) {
-        await msg.reply("عذراً، مقدرتش أسمع الرسالة. ممكن تكتبيلي؟ 😊")
+        await msg.reply("عذراً، مقدرتش أسمع الرسالة الصوتية. ممكن تكتبيلي؟ 😊")
         return
       }
+      console.log(`Transcribed: ${transcribed}`)
+
       const reply = await getAIReply({ phone, message: transcribed, messageType: "audio" })
-      if (reply) await msg.reply(reply)
-    } catch (err) { console.error("Voice error:", err.message) }
+      if (!reply) return
+
+      // جلب إعداد الرد الصوتي
+      const settings = await getBotSettings()
+      if (settings.voiceReply) {
+        console.log("Sending voice reply...")
+        const oggBase64 = await textToVoiceBase64(reply)
+        if (oggBase64) {
+          const voiceMedia = new MessageMedia("audio/ogg; codecs=opus", oggBase64, "reply.ogg")
+          await client.sendMessage(msg.from, voiceMedia, { sendAudioAsVoice: true })
+          return
+        }
+        console.log("Voice conversion failed, falling back to text")
+      }
+
+      await msg.reply(reply)
+    } catch (err) {
+      console.error("Voice message error:", err.message)
+    }
     return
   }
 
+  /* رسالة صورة */
   if (msg.type === "image") {
     try {
+      console.log(`Image message from ${phone}`)
       const media = await msg.downloadMedia()
       if (!media?.data) return
-      const reply = await getAIReply({ phone, message: msg.body || "", imageBase64: media.data, messageType: "image" })
+
+      const caption = msg.body || ""
+      const reply = await getAIReply({
+        phone,
+        message:     caption,
+        imageBase64: media.data,
+        messageType: "image",
+      })
       if (reply) await msg.reply(reply)
-    } catch (err) { console.error("Image error:", err.message) }
+    } catch (err) {
+      console.error("Image message error:", err.message)
+    }
     return
   }
 })
 
+/* إرسال رسالة نصية (تذكيرات وبرودكاست) */
 app.post("/send-message", async (req, res) => {
   let { phone, message } = req.body
   if (!phone || !message) return res.status(400).json({ error: "phone and message required" })
@@ -130,10 +232,14 @@ app.post("/send-message", async (req, res) => {
   try {
     await humanDelay(1500, 4000)
     await client.sendMessage(phone + "@c.us", message)
+    console.log("Message sent to", phone)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
+/* إرسال صورة/فاتورة */
 app.post("/send-media", async (req, res) => {
   let { phone, mediaBase64, mimeType, caption } = req.body
   if (!phone || !mediaBase64) return res.status(400).json({ error: "phone and mediaBase64 required" })
@@ -143,38 +249,54 @@ app.post("/send-media", async (req, res) => {
     const base64Data = mediaBase64.replace(/^data:[^;]+;base64,/, "")
     const media = new MessageMedia(mimeType || "image/jpeg", base64Data, "invoice.jpg")
     await client.sendMessage(phone + "@c.us", media, { caption: caption || "" })
+    console.log("Media sent to", phone)
     res.json({ success: true })
-  } catch (err) { res.status(500).json({ error: err.message }) }
+  } catch (err) {
+    console.error("send-media error:", err.message)
+    res.status(500).json({ error: err.message })
+  }
 })
 
+/* استقبال ماسنجر */
 app.post("/webhook", async (req, res) => {
   const body = req.body
   if (body.object !== "page") return res.sendStatus(200)
+
   for (const entry of body.entry) {
     const events = entry.messaging
     if (!events) continue
     for (const ev of events) {
-      if (!ev.sender || !ev.message?.text) continue
+      if (!ev.sender || !ev.message) continue
+      const sender_psid = ev.sender.id
+      const text = ev.message.text
+      if (!text) continue
       try {
-        const reply = await getAIReply({ phone: ev.sender.id, message: ev.message.text, messageType: "text" })
+        const reply = await getAIReply({ phone: sender_psid, message: text, messageType: "text" })
         if (!reply) continue
         await fetch(`https://graph.facebook.com/v18.0/me/messages?access_token=${FB_PAGE_TOKEN}`, {
-          method: "POST",
+          method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messaging_type: "RESPONSE", recipient: { id: ev.sender.id }, message: { text: reply } }),
+          body:    JSON.stringify({
+            messaging_type: "RESPONSE",
+            recipient: { id: sender_psid },
+            message:   { text: reply },
+          }),
         })
-      } catch (err) { console.log("Messenger error:", err.message) }
+      } catch (err) {
+        console.log("Messenger error:", err.message)
+      }
     }
   }
   res.status(200).send("EVENT_RECEIVED")
 })
 
+/* صفحة QR */
 app.get("/qr", (req, res) => {
   if (!currentQR) return res.send("<h2>QR لسه ما اتولدش</h2>")
   res.send(`<html><body style="text-align:center;padding:40px"><h2>Scan WhatsApp QR</h2><img src="${currentQR}" width="300"/></body></html>`)
 })
 
-app.get("/", (req, res) => res.send("WhatsApp bot v2 - voice + image"))
+app.get("/", (req, res) => res.send("WhatsApp bot is running — v3 (voice reply + image)"))
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = { client }
