@@ -5,10 +5,6 @@ app.use(express.json({ limit: "20mb" }))
 const { Client, LocalAuth, MessageMedia } = require("whatsapp-web.js")
 const qrcode = require("qrcode-terminal")
 const OpenAI = require("openai")
-const fs = require("fs")
-const os = require("os")
-const path = require("path")
-const { execFile } = require("child_process")
 
 const FB_PAGE_TOKEN = process.env.FB_PAGE_TOKEN
 const APP_URL       = process.env.APP_URL
@@ -108,42 +104,20 @@ async function getAIReply({ phone, message, imageBase64, messageType }) {
   }
 }
 
-/* تحويل النص لصوت OGG (voice note) باستخدام OpenAI TTS + ffmpeg */
+/* تحويل النص لصوت OGG مباشرةً باستخدام OpenAI TTS (بدون ffmpeg) */
 async function textToVoiceBase64(text) {
-  const tmpMp3 = path.join(os.tmpdir(), `tts_${Date.now()}.mp3`)
-  const tmpOgg = path.join(os.tmpdir(), `tts_${Date.now()}.ogg`)
   try {
-    // OpenAI TTS → MP3
-    const mp3Response = await openai.audio.speech.create({
+    const response = await openai.audio.speech.create({
       model: "tts-1",
       voice: "nova",
       input: text,
+      response_format: "opus",
     })
-    const mp3Buffer = Buffer.from(await mp3Response.arrayBuffer())
-    fs.writeFileSync(tmpMp3, mp3Buffer)
-
-    // ffmpeg: MP3 → OGG OPUS (صيغة واتساب)
-    await new Promise((resolve, reject) => {
-      execFile("ffmpeg", [
-        "-y", "-i", tmpMp3,
-        "-c:a", "libopus",
-        "-b:a", "32k",
-        "-vbr", "on",
-        tmpOgg
-      ], (err) => {
-        if (err) reject(err)
-        else resolve()
-      })
-    })
-
-    const oggBuffer = fs.readFileSync(tmpOgg)
-    return oggBuffer.toString("base64")
+    const buffer = Buffer.from(await response.arrayBuffer())
+    return buffer.toString("base64")
   } catch (err) {
-    console.error("TTS/ffmpeg error:", err.message)
+    console.error("TTS error:", err.message)
     return null
-  } finally {
-    try { fs.unlinkSync(tmpMp3) } catch {}
-    try { fs.unlinkSync(tmpOgg) } catch {}
   }
 }
 
@@ -296,7 +270,7 @@ app.get("/qr", (req, res) => {
   res.send(`<html><body style="text-align:center;padding:40px"><h2>Scan WhatsApp QR</h2><img src="${currentQR}" width="300"/></body></html>`)
 })
 
-app.get("/", (req, res) => res.send("WhatsApp bot is running — v3 (voice reply + image)"))
+app.get("/", (req, res) => res.send("WhatsApp bot is running — v4 (voice reply no ffmpeg)"))
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = { client }
