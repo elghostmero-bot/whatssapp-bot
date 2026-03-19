@@ -104,37 +104,61 @@ async function getAIReply({ phone, message, imageBase64, messageType }) {
   }
 }
 
-/* تحويل الأرقام في النص لكلمات عربية عشان TTS ينطقها صح */
+/* تنظيف النص من التنسيق قبل إرساله للـ TTS */
+function cleanTextForTTS(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")   // إزالة bold **نص**
+    .replace(/\*(.+?)\*/g, "$1")        // إزالة italic *نص*
+    .replace(/_{1,2}(.+?)_{1,2}/g, "$1") // إزالة _نص_
+    .replace(/#+\s*/g, "")              // إزالة عناوين markdown #
+    .replace(/^\s*[-•*]\s+/gm, "")      // إزالة bullet points في بداية السطر
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // إزالة روابط [نص](url)
+    .replace(/`{1,3}[^`]*`{1,3}/g, "") // إزالة code blocks
+    .replace(/\n{3,}/g, "\n\n")         // تقليل الأسطر الفاضية المتكررة
+    .replace(/\n/g, "، ")               // تحويل الأسطر لفاصل منطوق
+    .replace(/،\s*،/g, "،")             // تنظيف الفواصل المتكررة
+    .trim()
+}
+
+/* تحويل الأرقام والنص لنطق صوتي عربي طبيعي */
 async function prepareTextForTTS(text) {
+  const cleaned = cleanTextForTTS(text)
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: "أنت مساعد متخصص في تحويل النصوص للنطق الصوتي العربي. مهمتك: حوّل كل الأرقام (الإنجليزية والعربية) في النص لكلمات عربية منطوقة بشكل طبيعي. مثال: 3500 → ثلاثة آلاف وخمسمائة، 2 → اثنين، 10:30 → العاشرة والنصف. أرجع النص كاملاً مع الأرقام محوّلة فقط، بدون أي تعليق أو إضافة."
+          content: `أنت متخصص في تحويل النصوص المكتوبة لنطق صوتي عربي طبيعي وسلس تمامًا.
+مهامك:
+1. حوّل كل الأرقام لكلمات عربية منطوقة: 3500 → ثلاثة آلاف وخمسمائة، 10:30 → العاشرة والنصف، 2 → اثنين
+2. احذف أي رموز أو تنسيق متبقٍّ مثل النجمات والشرطات والأقواس
+3. اجعل النص يُقرأ بشكل محادثة طبيعية مريحة — لا قوائم ولا نقاط
+4. احتفظ بكل المعلومات والمعنى كاملاً
+5. أرجع النص النهائي فقط بدون أي تعليق أو مقدمة`
         },
-        { role: "user", content: text }
+        { role: "user", content: cleaned }
       ],
-      max_tokens: 800,
-      temperature: 0.1,
+      max_tokens: 1000,
+      temperature: 0.2,
     })
-    return completion.choices?.[0]?.message?.content || text
+    return completion.choices?.[0]?.message?.content || cleaned
   } catch (err) {
     console.error("prepareTextForTTS error:", err.message)
-    return text
+    return cleaned
   }
 }
 
-/* تحويل النص لصوت OGG مباشرةً باستخدام OpenAI TTS (بدون ffmpeg) */
+/* تحويل النص لصوت OGG عالي الجودة باستخدام OpenAI TTS */
 async function textToVoiceBase64(text) {
   try {
     const ttsText = await prepareTextForTTS(text)
     const response = await openai.audio.speech.create({
-      model: "tts-1",
-      voice: "nova",
+      model: "tts-1-hd",
+      voice: "shimmer",
       input: ttsText,
       response_format: "opus",
+      speed: 0.95,
     })
     const buffer = Buffer.from(await response.arrayBuffer())
     return buffer.toString("base64")
@@ -293,7 +317,7 @@ app.get("/qr", (req, res) => {
   res.send(`<html><body style="text-align:center;padding:40px"><h2>Scan WhatsApp QR</h2><img src="${currentQR}" width="300"/></body></html>`)
 })
 
-app.get("/", (req, res) => res.send("WhatsApp bot is running — v5 (voice reply + arabic numbers)"))
+app.get("/", (req, res) => res.send("WhatsApp bot is running — v6 (HD voice + natural TTS)"))
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = { client }
