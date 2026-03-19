@@ -120,27 +120,28 @@ function cleanTextForTTS(text) {
     .trim()
 }
 
-/* تحويل الأرقام والنص لنطق صوتي عربي طبيعي */
+/* تحويل الأرقام والنص لنطق صوتي عربي طبيعي مع تشكيل كامل */
 async function prepareTextForTTS(text) {
   const cleaned = cleanTextForTTS(text)
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
           content: `أنت متخصص في تحويل النصوص المكتوبة لنطق صوتي عربي طبيعي وسلس تمامًا.
-مهامك:
-1. حوّل كل الأرقام لكلمات عربية منطوقة: 3500 → ثلاثة آلاف وخمسمائة، 10:30 → العاشرة والنصف، 2 → اثنين
+مهامك بالترتيب:
+1. حوّل كل الأرقام لكلمات عربية منطوقة: 3500 → ثَلاثَةُ آلافٍ وَخَمْسُمِئَةٍ، 10:30 → الْعَاشِرَةُ وَالنِّصْفُ، 2 → اثْنَيْنِ
 2. احذف أي رموز أو تنسيق متبقٍّ مثل النجمات والشرطات والأقواس
 3. اجعل النص يُقرأ بشكل محادثة طبيعية مريحة — لا قوائم ولا نقاط
-4. احتفظ بكل المعلومات والمعنى كاملاً
-5. أرجع النص النهائي فقط بدون أي تعليق أو مقدمة`
+4. أضِف تشكيلاً كاملاً ودقيقاً على كل كلمة عربية في النص (فتحة، ضمة، كسرة، سكون، شدة، تنوين) حتى يُنطق الصوت بشكل صحيح وواضح
+5. احتفظ بكل المعلومات والمعنى كاملاً
+6. أرجع النص النهائي المشكَّل فقط بدون أي تعليق أو مقدمة`
         },
         { role: "user", content: cleaned }
       ],
-      max_tokens: 1000,
-      temperature: 0.2,
+      max_tokens: 1200,
+      temperature: 0.1,
     })
     return completion.choices?.[0]?.message?.content || cleaned
   } catch (err) {
@@ -317,7 +318,7 @@ app.get("/qr", (req, res) => {
   res.send(`<html><body style="text-align:center;padding:40px"><h2>Scan WhatsApp QR</h2><img src="${currentQR}" width="300"/></body></html>`)
 })
 
-app.get("/", (req, res) => res.send("WhatsApp bot is running — v6 (HD voice + natural TTS)"))
+app.get("/", (req, res) => res.send("WhatsApp bot is running — v7 (HD voice + tashkeel TTS)"))
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = { client }
