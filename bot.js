@@ -76,6 +76,7 @@ async function transcribeAudio(audioBase64, mimeType) {
       file:     audioFile,
       model:    "whisper-1",
       language: "ar",
+      prompt:   "صالون تجميل، حجز، ميكب، تسريحة، عروسة، حمام مغربي، كيراتين، مانيكير، باديكير، سعر، موعد، فرع، خدمة، بشرة، بروتين، بليتش، هايلايت، سواريه، خطوبة، زفاف، حنة، فستان، إكسسوار، تسريحة عروسة، مكياج سواريه",
     })
     return transcription.text || null
   } catch (err) {
@@ -159,7 +160,7 @@ async function textToVoiceBase64(text) {
       voice: "shimmer",
       input: ttsText,
       response_format: "opus",
-      speed: 1.20,
+      speed: 1.15,
     })
     const buffer = Buffer.from(await response.arrayBuffer())
     return buffer.toString("base64")
@@ -318,7 +319,7 @@ app.get("/qr", (req, res) => {
   res.send(`<html><body style="text-align:center;padding:40px"><h2>Scan WhatsApp QR</h2><img src="${currentQR}" width="300"/></body></html>`)
 })
 
-app.get("/", (req, res) => res.send("WhatsApp bot is running — v7 (HD voice + tashkeel TTS)"))
+app.get("/", (req, res) => res.send("WhatsApp bot is running — v8 (whisper prompt + normal speed)"))
 app.listen(process.env.PORT || 3000, () => console.log("Server running"))
 client.initialize()
 module.exports = { client }
