@@ -157,7 +157,7 @@ async function textToVoiceBase64(text) {
     const ttsText = await prepareTextForTTS(text)
     const response = await openai.audio.speech.create({
       model: "tts-1-hd",
-      voice: "shimmer",
+      voice: "nova",
       input: ttsText,
       response_format: "opus",
       speed: 1.15,
