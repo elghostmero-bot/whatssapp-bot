@@ -159,7 +159,7 @@ async function textToVoiceBase64(text) {
       voice: "shimmer",
       input: ttsText,
       response_format: "opus",
-      speed: 1.05,
+      speed: 1.20,
     })
     const buffer = Buffer.from(await response.arrayBuffer())
     return buffer.toString("base64")
