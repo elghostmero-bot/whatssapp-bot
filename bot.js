@@ -17,9 +17,28 @@ const client = new Client({
   authStrategy: new LocalAuth({ clientId: "samia-bot" }),
   puppeteer: {
     headless: true,
-    args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu"]
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--single-process",
+      "--no-zygote",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-default-apps",
+      "--disable-sync",
+      "--disable-translate",
+      "--hide-scrollbars",
+      "--metrics-recording-only",
+      "--mute-audio",
+      "--no-first-run",
+      "--safebrowsing-disable-auto-update",
+      "--js-flags=--max-old-space-size=256",
+    ]
   }
 })
+
 
 let currentQR = null
 
@@ -262,20 +281,73 @@ app.post("/send-message", async (req, res) => {
   }
 })
 
+/* ── Memory monitoring ── */
+const MEDIA_SEND_TIMEOUT_MS = 30000   // 30 s hard timeout per send
+const MAX_MEDIA_SIZE_BYTES  = 5 * 1024 * 1024  // 5 MB base64 payload limit
+
+function logMemory(label) {
+  const m = process.memoryUsage()
+  console.log(
+    `[mem:${label}] rss=${(m.rss / 1024 / 1024).toFixed(1)}MB` +
+    ` heap=${(m.heapUsed / 1024 / 1024).toFixed(1)}/${(m.heapTotal / 1024 / 1024).toFixed(1)}MB`
+  )
+}
+
+// Log memory every 5 minutes so we can track trends in Railway logs
+setInterval(() => logMemory("heartbeat"), 5 * 60 * 1000).unref()
+
+/* Helper: send media with a hard timeout and explicit GC hint */
+async function sendMediaSafe(phone, base64Data, mimeType, caption) {
+  const sendPromise = (async () => {
+    const media = new MessageMedia(mimeType || "image/jpeg", base64Data, "invoice.jpg")
+    await client.sendMessage(phone + "@c.us", media, { caption: caption || "" })
+  })()
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("sendMessage timed out after 30 s")), MEDIA_SEND_TIMEOUT_MS)
+  )
+
+  try {
+    await Promise.race([sendPromise, timeoutPromise])
+  } finally {
+    // Release the large base64 string and hint V8 to collect
+    base64Data = null
+    if (global.gc) {
+      try { global.gc() } catch (_) {}
+    }
+  }
+}
+
 /* إرسال صورة/فاتورة */
 app.post("/send-media", async (req, res) => {
   let { phone, mediaBase64, mimeType, caption } = req.body
   if (!phone || !mediaBase64) return res.status(400).json({ error: "phone and mediaBase64 required" })
+
+  // Validate payload size before doing any work
+  const payloadBytes = Buffer.byteLength(mediaBase64, "utf8")
+  if (payloadBytes > MAX_MEDIA_SIZE_BYTES) {
+    console.warn(`send-media: payload too large (${(payloadBytes / 1024 / 1024).toFixed(2)} MB) for ${phone}`)
+    return res.status(413).json({ error: "Media file too large. Maximum allowed size is 5 MB." })
+  }
+
   phone = formatNumber(phone)
+  logMemory("send-media:start")
+
   try {
-    await humanDelay(1500, 4000)
+    await humanDelay(1500, 3000)
+
+    // Strip data-URI prefix once and discard the original string
     const base64Data = mediaBase64.replace(/^data:[^;]+;base64,/, "")
-    const media = new MessageMedia(mimeType || "image/jpeg", base64Data, "invoice.jpg")
-    await client.sendMessage(phone + "@c.us", media, { caption: caption || "" })
+    mediaBase64 = null  // free the original reference early
+
+    await sendMediaSafe(phone, base64Data, mimeType, caption)
+
     console.log("Media sent to", phone)
+    logMemory("send-media:done")
     res.json({ success: true })
   } catch (err) {
     console.error("send-media error:", err.message)
+    logMemory("send-media:error")
     res.status(500).json({ error: err.message })
   }
 })
