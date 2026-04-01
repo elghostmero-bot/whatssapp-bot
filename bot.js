@@ -50,6 +50,11 @@ client.on("qr", async qr => {
 client.on("authenticated", () => console.log("WhatsApp authenticated"))
 client.on("ready",         () => console.log("WhatsApp Bot Ready"))
 
+client.on("disconnected", async (reason) => {
+  console.warn("WhatsApp client disconnected:", reason)
+  await reinitializeClient()
+})
+
 function formatNumber(num) {
   num = num.replace(/\D/g, "")
   if (num.startsWith("20")) return num
@@ -296,6 +301,47 @@ function logMemory(label) {
 // Log memory every 5 minutes so we can track trends in Railway logs
 setInterval(() => logMemory("heartbeat"), 5 * 60 * 1000).unref()
 
+/* ── Reconnection helper ── */
+let isReinitializing = false
+
+async function reinitializeClient(attempt = 1) {
+  if (isReinitializing) {
+    console.log("reinitializeClient: already in progress, skipping")
+    return
+  }
+  isReinitializing = true
+  const MAX_ATTEMPTS = 5
+  const BASE_DELAY_MS = 5000
+
+  try {
+    console.log(`reinitializeClient: attempt ${attempt}/${MAX_ATTEMPTS}`)
+    try {
+      await client.destroy()
+      console.log("reinitializeClient: client destroyed")
+    } catch (destroyErr) {
+      console.warn("reinitializeClient: destroy error (ignored):", destroyErr.message)
+    }
+
+    const delayMs = BASE_DELAY_MS * Math.pow(2, attempt - 1)
+    console.log(`reinitializeClient: waiting ${delayMs / 1000}s before reinitializing...`)
+    await new Promise(r => setTimeout(r, delayMs))
+
+    await client.initialize()
+    console.log("reinitializeClient: client reinitialized successfully")
+  } catch (err) {
+    console.error(`reinitializeClient: attempt ${attempt} failed:`, err.message)
+    if (attempt < MAX_ATTEMPTS) {
+      isReinitializing = false
+      await reinitializeClient(attempt + 1)
+    } else {
+      console.error("reinitializeClient: all attempts exhausted, giving up")
+    }
+  } finally {
+    isReinitializing = false
+  }
+}
+
+
 /* Helper: send media with a hard timeout and explicit GC hint */
 async function sendMediaSafe(phone, base64Data, mimeType, caption) {
   const sendPromise = (async () => {
@@ -309,6 +355,12 @@ async function sendMediaSafe(phone, base64Data, mimeType, caption) {
 
   try {
     await Promise.race([sendPromise, timeoutPromise])
+  } catch (err) {
+    if (err.message && err.message.includes("detached Frame")) {
+      console.error("sendMediaSafe: detached Frame detected — triggering client reinitialization")
+      reinitializeClient().catch(e => console.error("reinitializeClient error:", e.message))
+    }
+    throw err
   } finally {
     // Release the large base64 string and hint V8 to collect
     base64Data = null
@@ -317,6 +369,7 @@ async function sendMediaSafe(phone, base64Data, mimeType, caption) {
     }
   }
 }
+
 
 /* إرسال صورة/فاتورة */
 app.post("/send-media", async (req, res) => {
@@ -348,9 +401,13 @@ app.post("/send-media", async (req, res) => {
   } catch (err) {
     console.error("send-media error:", err.message)
     logMemory("send-media:error")
-    res.status(500).json({ error: err.message })
+    const isDetached = err.message && err.message.includes("detached Frame")
+    const clientError = isDetached
+      ? "WhatsApp connection lost. Reconnecting — please retry in a moment."
+      : err.message
+    res.status(500).json({ error: clientError })
   }
-})
+
 
 /* استقبال ماسنجر */
 app.post("/webhook", async (req, res) => {
