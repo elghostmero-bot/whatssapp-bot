@@ -50,6 +50,11 @@ client.on("qr", async qr => {
 client.on("authenticated", () => console.log("WhatsApp authenticated"))
 client.on("ready",         () => console.log("WhatsApp Bot Ready"))
 
+client.on("disconnected", reason => {
+  console.warn("WhatsApp disconnected:", reason)
+  reinitializeClient()
+})
+
 function formatNumber(num) {
   num = num.replace(/\D/g, "")
   if (num.startsWith("20")) return num
@@ -281,7 +286,40 @@ app.post("/send-message", async (req, res) => {
   }
 })
 
+/* ── Reconnection logic ── */
+let isReinitializing = false
+
+async function reinitializeClient(attempt = 1) {
+  if (isReinitializing) {
+    console.log("Reinitialization already in progress — skipping")
+    return
+  }
+  if (attempt > 5) {
+    console.error("Max reconnection attempts reached. Manual restart required.")
+    return
+  }
+
+  isReinitializing = true
+  const delayMs = 5000 * Math.pow(2, attempt - 1)  // 5s, 10s, 20s, 40s, 80s
+  console.log(`Reconnection attempt ${attempt}/5 — waiting ${delayMs / 1000}s...`)
+
+  await new Promise(r => setTimeout(r, delayMs))
+
+  try {
+    await client.destroy()
+    console.log("Client destroyed — reinitializing...")
+    await client.initialize()
+    console.log("Client reinitialized successfully")
+    isReinitializing = false
+  } catch (err) {
+    console.error(`Reinitialization attempt ${attempt} failed:`, err.message)
+    isReinitializing = false
+    reinitializeClient(attempt + 1)
+  }
+}
+
 /* ── Memory monitoring ── */
+
 const MEDIA_SEND_TIMEOUT_MS = 30000   // 30 s hard timeout per send
 const MAX_MEDIA_SIZE_BYTES  = 5 * 1024 * 1024  // 5 MB base64 payload limit
 
@@ -309,6 +347,12 @@ async function sendMediaSafe(phone, base64Data, mimeType, caption) {
 
   try {
     await Promise.race([sendPromise, timeoutPromise])
+  } catch (err) {
+    if (err.message && err.message.includes("detached Frame")) {
+      console.warn("Detached Frame detected in sendMediaSafe — triggering reconnection")
+      reinitializeClient()
+    }
+    throw err
   } finally {
     // Release the large base64 string and hint V8 to collect
     base64Data = null
@@ -317,6 +361,7 @@ async function sendMediaSafe(phone, base64Data, mimeType, caption) {
     }
   }
 }
+
 
 /* إرسال صورة/فاتورة */
 app.post("/send-media", async (req, res) => {
@@ -348,6 +393,9 @@ app.post("/send-media", async (req, res) => {
   } catch (err) {
     console.error("send-media error:", err.message)
     logMemory("send-media:error")
+    if (err.message && err.message.includes("detached Frame")) {
+      return res.status(503).json({ error: "WhatsApp connection lost. Reconnecting — please retry in a moment." })
+    }
     res.status(500).json({ error: err.message })
   }
 })
