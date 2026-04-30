@@ -320,7 +320,7 @@ async function reinitializeClient(attempt = 1) {
 
 /* ── Memory monitoring ── */
 
-const MEDIA_SEND_TIMEOUT_MS = 30000   // 30 s hard timeout per send
+const MEDIA_SEND_TIMEOUT_MS = 60000   // 60 s hard timeout per send
 const MAX_MEDIA_SIZE_BYTES  = 5 * 1024 * 1024  // 5 MB base64 payload limit
 
 function logMemory(label) {
@@ -342,7 +342,7 @@ async function sendMediaSafe(phone, base64Data, mimeType, caption) {
   })()
 
   const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("sendMessage timed out after 30 s")), MEDIA_SEND_TIMEOUT_MS)
+    setTimeout(() => reject(new Error("sendMessage timed out after 60 s")), MEDIA_SEND_TIMEOUT_MS)
   )
 
   try {
