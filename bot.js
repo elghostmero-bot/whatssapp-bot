@@ -37,16 +37,13 @@ function loadData() {
     const raw = fs.readFileSync(filePath, 'utf8');
     const parsed = JSON.parse(raw);
 
-    /*
-      replies.json supports:
-
-      [
-        {
-          "keywords": ["حجاب", "حجاب كامل"],
-          "reply": "حجاب كامل ب 500"
-        }
-      ]
-    */
+    // Support replies.json format:
+    // [
+    //   {
+    //     "keywords": ["حجاب", "حجاب كامل"],
+    //     "reply": "حجاب كامل ب 500"
+    //   }
+    // ]
 
     if (Array.isArray(parsed)) {
       repliesData = {};
@@ -73,7 +70,7 @@ function loadData() {
       }
     }
 
-    // Also support object format if used later
+    // Also support object format
     else if (
       parsed &&
       typeof parsed === 'object'
@@ -109,7 +106,7 @@ function normalizeArabic(text = '') {
     .toLowerCase()
     .trim()
 
-    // Arabic letters normalization
+    // Arabic normalization
     .replace(/[إأآا]/g, 'ا')
     .replace(/ى/g, 'ي')
     .replace(/ة/g, 'ه')
@@ -138,10 +135,7 @@ function findReply(messageText = '') {
     return null;
   }
 
-  // ----------------------------------------------------------
   // Exact match first
-  // ----------------------------------------------------------
-
   for (const [keyword, reply] of Object.entries(repliesData)) {
 
     if (
@@ -151,10 +145,7 @@ function findReply(messageText = '') {
     }
   }
 
-  // ----------------------------------------------------------
-  // Search longest keywords first
-  // ----------------------------------------------------------
-
+  // Longest keyword first
   const entries = Object.entries(repliesData)
     .sort(
       (a, b) =>
@@ -162,10 +153,7 @@ function findReply(messageText = '') {
         normalizeArabic(a[0]).length
     );
 
-  // ----------------------------------------------------------
-  // Keyword inside message
-  // ----------------------------------------------------------
-
+  // Keyword inside customer's message
   for (const [keyword, reply] of entries) {
 
     const normalizedKeyword =
@@ -218,17 +206,15 @@ function outgoingMessageDelay(
 // WHATSAPP AUTH PATH
 // ============================================================
 
-/*
-  Replit:
-  Uses .wwebjs_auth inside the project.
-
-  Railway:
-  If you create a Persistent Volume, you can set:
-
-  WWEBJS_AUTH_PATH=/app/.wwebjs_auth
-
-  in Railway Variables.
-*/
+// Replit:
+// .wwebjs_auth inside project directory.
+//
+// Railway:
+// You can set WWEBJS_AUTH_PATH in Variables
+// if using a Persistent Volume.
+//
+// Example:
+// WWEBJS_AUTH_PATH=/app/.wwebjs_auth
 
 const authPath =
   process.env.WWEBJS_AUTH_PATH ||
@@ -262,6 +248,15 @@ const client = new Client({
   puppeteer: {
 
     headless: true,
+
+    // IMPORTANT:
+    // Use a fresh Chromium profile for every process.
+    // This prevents stale profile locks on Railway/Replit.
+
+    userDataDir: path.join(
+      '/tmp',
+      `chrome-profile-${process.pid}`
+    ),
 
     args: [
 
@@ -300,6 +295,7 @@ const client = new Client({
     timeout: 60000,
 
     dumpio: false
+
   },
 
   webVersionCache: {
@@ -316,7 +312,7 @@ const client = new Client({
 });
 
 // ============================================================
-// QR
+// QR EVENT
 // ============================================================
 
 client.on(
@@ -454,9 +450,7 @@ client.on(
         3000
       );
 
-    }
-
-    else {
+    } else {
 
       console.log(
         '⚠️ [ERROR] Max restart attempts reached. Manual intervention needed.'
@@ -492,7 +486,7 @@ client.on(
 
     try {
 
-      // Ignore our own messages
+      // Ignore own messages
       if (msg.fromMe) {
         return;
       }
@@ -502,7 +496,7 @@ client.on(
         return;
       }
 
-      // Extra protection against group messages
+      // Extra group protection
       if (
         typeof msg.from === 'string' &&
         msg.from.endsWith('@g.us')
@@ -540,7 +534,7 @@ client.on(
       const reply =
         findReply(text);
 
-      // No reply found
+      // No matching reply
       if (!reply) {
 
         console.log(
@@ -608,7 +602,7 @@ app.get(
 
     try {
 
-      // No QR available
+      // No QR currently available
       if (!currentQR) {
 
         return res.send(`
@@ -928,7 +922,7 @@ app.get(
 );
 
 // ============================================================
-// START SERVER
+// START EXPRESS SERVER
 // ============================================================
 
 const server =
@@ -964,7 +958,7 @@ const server =
   );
 
 // ============================================================
-// START WHATSAPP
+// START WHATSAPP CLIENT
 // ============================================================
 
 async function startClient() {
@@ -1031,7 +1025,7 @@ async function shutdown(signal) {
     }
   );
 
-  // Force exit if server does not close
+  // Force exit if server doesn't close
   setTimeout(
     () => process.exit(0),
     5000
