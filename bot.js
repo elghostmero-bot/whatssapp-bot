@@ -1,4 +1,3 @@
-
 const express = require("express");
 const app = express();
 
@@ -597,4 +596,3 @@ client.initialize();
 module.exports = {
     client
 };
-```
