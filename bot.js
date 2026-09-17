@@ -14,8 +14,25 @@ const PORT = process.env.PORT || 8080;
 let botReady = false;
 let latestQR = null;
 let client = null;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
+let isRestarting = false;
+
+// =========================
+// WhatsApp Auth
+// =========================
+
+const authPath =
+    process.env.WWEBJS_AUTH_PATH ||
+    path.join(__dirname, '.wwebjs_auth');
+
+const clientId = 'samia-bot';
+
+const sessionPath = path.join(
+    authPath,
+    `session-${clientId}`
+);
+
+console.log(`📁 WhatsApp auth path: ${authPath}`);
+console.log(`📁 WhatsApp session path: ${sessionPath}`);
 
 // =========================
 // Load Replies
@@ -23,49 +40,87 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 
 function loadData() {
     try {
-        const filePath = path.join(__dirname, 'replies.json');
+        const filePath = path.join(
+            __dirname,
+            'replies.json'
+        );
 
         if (!fs.existsSync(filePath)) {
-            console.error('❌ replies.json not found');
+            console.error(
+                '❌ replies.json not found'
+            );
+
             return [];
         }
 
         const data = JSON.parse(
-            fs.readFileSync(filePath, 'utf8')
+            fs.readFileSync(
+                filePath,
+                'utf8'
+            )
         );
 
         if (Array.isArray(data)) {
-            console.log(`📚 Loaded ${data.length} reply keywords`);
+            console.log(
+                `📚 Loaded ${data.length} reply keywords`
+            );
+
             return data;
         }
 
-        if (data && typeof data === 'object') {
+        if (
+            data &&
+            typeof data === 'object'
+        ) {
             const result = [];
 
-            for (const [category, value] of Object.entries(data)) {
-                if (typeof value === 'string') {
+            for (
+                const [category, value]
+                of Object.entries(data)
+            ) {
+                if (
+                    typeof value === 'string'
+                ) {
                     result.push({
                         category,
                         keywords: [category],
                         reply: value
                     });
-                } else if (value && typeof value === 'object') {
+                }
+
+                else if (
+                    value &&
+                    typeof value === 'object'
+                ) {
                     result.push({
                         category,
-                        keywords: value.keywords || [category],
-                        reply: value.reply || value.response || ''
+                        keywords:
+                            value.keywords ||
+                            [category],
+
+                        reply:
+                            value.reply ||
+                            value.response ||
+                            ''
                     });
                 }
             }
 
-            console.log(`📚 Loaded ${result.length} reply keywords`);
+            console.log(
+                `📚 Loaded ${result.length} reply keywords`
+            );
+
             return result;
         }
 
-        console.error('❌ Invalid replies.json format');
+        console.error(
+            '❌ Invalid replies.json format'
+        );
+
         return [];
 
     } catch (error) {
+
         console.error(
             '❌ Error loading replies.json:',
             error.message
@@ -82,7 +137,10 @@ const replies = loadData();
 // =========================
 
 function normalizeArabic(text) {
-    if (!text) return '';
+
+    if (!text) {
+        return '';
+    }
 
     return String(text)
         .toLowerCase()
@@ -92,9 +150,18 @@ function normalizeArabic(text) {
         .replace(/ؤ/g, 'و')
         .replace(/ئ/g, 'ي')
         .replace(/ـ/g, '')
-        .replace(/[\u064B-\u065F\u0670]/g, '')
-        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-        .replace(/\s+/g, ' ')
+        .replace(
+            /[\u064B-\u065F\u0670]/g,
+            ''
+        )
+        .replace(
+            /[^\p{L}\p{N}\s]/gu,
+            ' '
+        )
+        .replace(
+            /\s+/g,
+            ' '
+        )
         .trim();
 }
 
@@ -103,20 +170,26 @@ function normalizeArabic(text) {
 // =========================
 
 function findReply(messageText) {
-    const text = normalizeArabic(messageText);
+
+    const text =
+        normalizeArabic(messageText);
 
     if (!text) {
         return null;
     }
 
-    // Exact match first
+    // Exact match
     for (const item of replies) {
-        const keywords = Array.isArray(item.keywords)
-            ? item.keywords
-            : [item.keywords];
+
+        const keywords =
+            Array.isArray(item.keywords)
+                ? item.keywords
+                : [item.keywords];
 
         for (const keyword of keywords) {
-            const normalizedKeyword = normalizeArabic(keyword);
+
+            const normalizedKeyword =
+                normalizeArabic(keyword);
 
             if (
                 normalizedKeyword &&
@@ -127,25 +200,33 @@ function findReply(messageText) {
         }
     }
 
-    // Longest matching keyword
+    // Longest keyword match
     let bestMatch = null;
     let bestLength = 0;
 
     for (const item of replies) {
-        const keywords = Array.isArray(item.keywords)
-            ? item.keywords
-            : [item.keywords];
+
+        const keywords =
+            Array.isArray(item.keywords)
+                ? item.keywords
+                : [item.keywords];
 
         for (const keyword of keywords) {
-            const normalizedKeyword = normalizeArabic(keyword);
+
+            const normalizedKeyword =
+                normalizeArabic(keyword);
 
             if (
                 normalizedKeyword &&
-                text.includes(normalizedKeyword) &&
-                normalizedKeyword.length > bestLength
+                text.includes(
+                    normalizedKeyword
+                ) &&
+                normalizedKeyword.length >
+                    bestLength
             ) {
                 bestMatch = item.reply;
-                bestLength = normalizedKeyword.length;
+                bestLength =
+                    normalizedKeyword.length;
             }
         }
     }
@@ -158,24 +239,17 @@ function findReply(messageText) {
 // =========================
 
 function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise(
+        resolve => setTimeout(resolve, ms)
+    );
 }
 
 // =========================
-// WhatsApp Auth Path
-// =========================
-
-const authPath =
-    process.env.WWEBJS_AUTH_PATH ||
-    path.join(__dirname, '.wwebjs_auth');
-
-console.log(`📁 WhatsApp auth path: ${authPath}`);
-
-// =========================
-// Remove Stale Chromium Locks
+// Remove Chromium Locks
 // =========================
 
 function removeChromiumLocks(dir) {
+
     if (!fs.existsSync(dir)) {
         return;
     }
@@ -187,33 +261,59 @@ function removeChromiumLocks(dir) {
     ];
 
     try {
-        const entries = fs.readdirSync(dir, {
-            withFileTypes: true
-        });
+
+        const entries =
+            fs.readdirSync(
+                dir,
+                {
+                    withFileTypes: true
+                }
+            );
 
         for (const entry of entries) {
-            const fullPath = path.join(dir, entry.name);
+
+            const fullPath =
+                path.join(
+                    dir,
+                    entry.name
+                );
 
             if (entry.isDirectory()) {
-                removeChromiumLocks(fullPath);
+
+                removeChromiumLocks(
+                    fullPath
+                );
+
                 continue;
             }
 
-            if (lockNames.includes(entry.name)) {
+            if (
+                lockNames.includes(
+                    entry.name
+                )
+            ) {
+
                 try {
-                    fs.unlinkSync(fullPath);
+
+                    fs.unlinkSync(
+                        fullPath
+                    );
 
                     console.log(
                         `🧹 Removed stale Chromium lock: ${fullPath}`
                     );
+
                 } catch (error) {
+
                     console.log(
                         `⚠️ Could not remove lock ${fullPath}: ${error.message}`
                     );
                 }
             }
         }
+
     } catch (error) {
+
         console.log(
             `⚠️ Could not scan ${dir}: ${error.message}`
         );
@@ -221,46 +321,121 @@ function removeChromiumLocks(dir) {
 }
 
 // =========================
-// Prepare WhatsApp Profile
+// Prepare Profile
 // =========================
 
 function prepareWhatsAppProfile() {
-    console.log('🧹 Checking for old Chromium locks...');
 
-    removeChromiumLocks(authPath);
+    console.log(
+        '🧹 Checking for old Chromium locks...'
+    );
 
-    console.log('✅ Chromium lock cleanup finished');
+    removeChromiumLocks(
+        authPath
+    );
+
+    console.log(
+        '✅ Chromium lock cleanup finished'
+    );
 }
 
 // =========================
-// Create WhatsApp Client
+// Delete Broken Session
+// =========================
+
+function deleteBrokenSession() {
+
+    try {
+
+        if (
+            fs.existsSync(
+                sessionPath
+            )
+        ) {
+
+            console.log(
+                '🗑️ Removing broken WhatsApp session...'
+            );
+
+            fs.rmSync(
+                sessionPath,
+                {
+                    recursive: true,
+                    force: true
+                }
+            );
+
+            console.log(
+                '✅ Broken WhatsApp session removed'
+            );
+
+        } else {
+
+            console.log(
+                'ℹ️ No old WhatsApp session found'
+            );
+        }
+
+    } catch (error) {
+
+        console.error(
+            '❌ Could not remove WhatsApp session:',
+            error.message
+        );
+    }
+}
+
+// =========================
+// Create Client
 // =========================
 
 function createClient() {
+
     return new Client({
-        authStrategy: new LocalAuth({
-            clientId: 'samia-bot',
-            dataPath: authPath
-        }),
+
+        authStrategy:
+            new LocalAuth({
+
+                clientId,
+
+                dataPath:
+                    authPath
+            }),
 
         puppeteer: {
+
             headless: true,
 
             args: [
+
                 '--no-sandbox',
+
                 '--disable-setuid-sandbox',
+
                 '--disable-dev-shm-usage',
+
                 '--disable-gpu',
+
                 '--disable-software-rasterizer',
+
                 '--disable-extensions',
+
                 '--disable-background-networking',
+
                 '--disable-background-timer-throttling',
+
                 '--disable-renderer-backgrounding',
+
                 '--disable-features=Translate,BackForwardCache',
+
                 '--no-first-run',
+
                 '--no-default-browser-check',
+
                 '--disable-popup-blocking',
+
                 '--disable-notifications',
+
                 '--disable-sync'
             ]
         }
@@ -268,454 +443,177 @@ function createClient() {
 }
 
 // =========================
-// Client Event Registration
+// QR Event
 // =========================
 
-function registerClientEvents(currentClient) {
+function registerQREvent(currentClient) {
 
-    // QR
-    currentClient.on('qr', async qr => {
-        console.log('📱 QR Code received');
+    currentClient.on(
+        'qr',
+        async qr => {
 
-        latestQR = qr;
-        botReady = false;
-
-        qrcodeTerminal.generate(qr, {
-            small: true
-        });
-
-        try {
-            await qrcode.toDataURL(qr);
-        } catch (error) {
-            console.error(
-                '❌ QR conversion error:',
-                error.message
-            );
-        }
-    });
-
-    // Authenticated
-    currentClient.on('authenticated', () => {
-        console.log('✅ WhatsApp authenticated');
-    });
-
-    // Ready
-    currentClient.on('ready', () => {
-        console.log('================================');
-        console.log('✅ WhatsApp BOT IS READY');
-        console.log('================================');
-
-        botReady = true;
-        latestQR = null;
-        reconnectAttempts = 0;
-    });
-
-    // Auth failure
-    currentClient.on('auth_failure', msg => {
-        console.error(
-            '❌ WhatsApp authentication failure:',
-            msg
-        );
-
-        botReady = false;
-    });
-
-    // Error
-    currentClient.on('error', error => {
-        console.error(
-            '❌ WhatsApp client error:',
-            error
-        );
-    });
-
-    // Disconnected
-    currentClient.on('disconnected', async reason => {
-        console.log(
-            '⚠️ WhatsApp disconnected:',
-            reason
-        );
-
-        botReady = false;
-
-        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-            console.error(
-                '❌ Maximum reconnect attempts reached'
-            );
-
-            return;
-        }
-
-        reconnectAttempts++;
-
-        console.log(
-            `🔄 Reconnecting... attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`
-        );
-
-        await delay(5000);
-
-        try {
-            await currentClient.destroy();
-        } catch (error) {
             console.log(
-                '⚠️ Destroy warning:',
-                error.message
+                '📱 QR Code received'
             );
-        }
 
-        try {
-            prepareWhatsAppProfile();
+            latestQR = qr;
+            botReady = false;
 
-            client = createClient();
-
-            registerClientEvents(client);
-
-            registerMessageHandler(client);
-
-            await client.initialize();
-
-        } catch (error) {
-            console.error(
-                '❌ Reconnect failed:',
-                error.message
+            qrcodeTerminal.generate(
+                qr,
+                {
+                    small: true
+                }
             );
+
+            try {
+
+                await qrcode.toDataURL(
+                    qr
+                );
+
+            } catch (error) {
+
+                console.error(
+                    '❌ QR conversion error:',
+                    error.message
+                );
+            }
         }
-    });
+    );
 }
 
 // =========================
 // Message Handler
 // =========================
 
-function registerMessageHandler(currentClient) {
+function registerMessageHandler(
+    currentClient
+) {
 
-    currentClient.on('message', async msg => {
+    currentClient.on(
+        'message',
+        async msg => {
 
-        try {
-            // Ignore own messages
-            if (msg.fromMe) {
-                return;
-            }
+            try {
 
-            // Ignore groups
-            if (
-                msg.from &&
-                msg.from.endsWith('@g.us')
-            ) {
-                return;
-            }
+                if (msg.fromMe) {
+                    return;
+                }
 
-            // Ignore status
-            if (msg.from === 'status@broadcast') {
-                return;
-            }
+                if (
+                    msg.from &&
+                    msg.from.endsWith(
+                        '@g.us'
+                    )
+                ) {
+                    return;
+                }
 
-            const body = (msg.body || '').trim();
+                if (
+                    msg.from ===
+                    'status@broadcast'
+                ) {
+                    return;
+                }
 
-            if (!body) {
-                return;
-            }
+                const body =
+                    (
+                        msg.body ||
+                        ''
+                    ).trim();
 
-            console.log(
-                `📩 Message from ${msg.from}: ${body}`
-            );
+                if (!body) {
+                    return;
+                }
 
-            const reply = findReply(body);
-
-            if (!reply) {
                 console.log(
-                    '❓ No matching reply found'
+                    `📩 Message from ${msg.from}: ${body}`
                 );
 
-                return;
+                const reply =
+                    findReply(body);
+
+                if (!reply) {
+
+                    console.log(
+                        '❓ No matching reply found'
+                    );
+
+                    return;
+                }
+
+                console.log(
+                    `💬 Reply: ${reply}`
+                );
+
+                await delay(800);
+
+                await msg.reply(
+                    reply
+                );
+
+                console.log(
+                    '✅ Reply sent'
+                );
+
+            } catch (error) {
+
+                console.error(
+                    '❌ Message handling error:',
+                    error.message
+                );
             }
-
-            console.log(
-                `💬 Reply: ${reply}`
-            );
-
-            await delay(800);
-
-            await msg.reply(reply);
-
-            console.log(
-                '✅ Reply sent'
-            );
-
-        } catch (error) {
-            console.error(
-                '❌ Message handling error:',
-                error.message
-            );
         }
-    });
+    );
 }
 
 // =========================
-// API: QR
+// Start Fresh Client
 // =========================
 
-app.get('/api/qr', async (req, res) => {
+async function startFreshClient(
+    deleteSession = false
+) {
 
-    try {
-
-        if (!latestQR) {
-
-            return res.send(`
-                <!DOCTYPE html>
-                <html lang="ar">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport"
-                          content="width=device-width, initial-scale=1.0">
-
-                    <title>WhatsApp QR</title>
-
-                    <style>
-                        body {
-                            font-family: Arial;
-                            text-align: center;
-                            padding: 40px;
-                            background: #111;
-                            color: #fff;
-                        }
-                    </style>
-                </head>
-
-                <body>
-
-                    <h2>
-                        ${
-                            botReady
-                                ? '✅ البوت متصل بالفعل'
-                                : '⏳ لم يتم إنشاء QR Code حتى الآن'
-                        }
-                    </h2>
-
-                </body>
-                </html>
-            `);
-        }
-
-        const qrData =
-            await qrcode.toDataURL(latestQR);
-
-        res.send(`
-            <!DOCTYPE html>
-            <html lang="ar">
-
-            <head>
-
-                <meta charset="UTF-8">
-
-                <meta name="viewport"
-                      content="width=device-width, initial-scale=1.0">
-
-                <title>WhatsApp QR</title>
-
-                <style>
-
-                    body {
-                        margin: 0;
-                        padding: 30px;
-                        background: #111;
-                        color: #fff;
-                        font-family: Arial, sans-serif;
-                        text-align: center;
-                    }
-
-                    img {
-                        width: 300px;
-                        max-width: 90%;
-                        background: #fff;
-                        padding: 15px;
-                        border-radius: 10px;
-                    }
-
-                </style>
-
-            </head>
-
-            <body>
-
-                <h2>
-                    📱 امسح QR من واتساب
-                </h2>
-
-                <img
-                    src="${qrData}"
-                    alt="WhatsApp QR"
-                >
-
-                <p>
-                    افتح واتساب ← الأجهزة المرتبطة ← ربط جهاز
-                </p>
-
-            </body>
-
-            </html>
-        `);
-
-    } catch (error) {
-
-        console.error(
-            '❌ QR API error:',
-            error.message
-        );
-
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// =========================
-// API: Status
-// =========================
-
-app.get('/api/status', (req, res) => {
-
-    res.json({
-        success: true,
-        ready: botReady,
-        hasQR: !!latestQR,
-        status: botReady
-            ? 'connected'
-            : 'disconnected'
-    });
-
-});
-
-// =========================
-// API: Send Message
-// =========================
-
-app.post('/api/send', async (req, res) => {
-
-    try {
-
-        const {
-            phone,
-            message
-        } = req.body;
-
-        if (!phone || !message) {
-
-            return res.status(400).json({
-                success: false,
-                error: 'phone and message are required'
-            });
-
-        }
-
-        if (!botReady) {
-
-            return res.status(503).json({
-                success: false,
-                error: 'WhatsApp bot is not ready'
-            });
-
-        }
-
-        const cleanPhone =
-            String(phone).replace(/\D/g, '');
-
-        if (!cleanPhone) {
-
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid phone number'
-            });
-
-        }
-
-        const chatId =
-            `${cleanPhone}@c.us`;
-
-        const sentMessage =
-            await client.sendMessage(
-                chatId,
-                String(message)
-            );
-
-        res.json({
-            success: true,
-            messageId:
-                sentMessage.id._serialized
-        });
-
-    } catch (error) {
-
-        console.error(
-            '❌ Send message error:',
-            error.message
-        );
-
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-
+    if (isRestarting) {
+        return;
     }
 
-});
+    isRestarting = true;
 
-// =========================
-// Health
-// =========================
-
-app.get('/health', (req, res) => {
-
-    res.status(200).json({
-        status: 'ok',
-        whatsapp: botReady
-            ? 'ready'
-            : 'not_ready'
-    });
-
-});
-
-// =========================
-// Start Server
-// =========================
-
-app.listen(PORT, () => {
-
-    console.log(
-        `🚀 Server running on port ${PORT}`
-    );
-
-    console.log(
-        '  /api/status - Bot status'
-    );
-
-    console.log('📊 API endpoints:');
-
-    console.log(
-        '  /api/send - Send WhatsApp message'
-    );
-
-    console.log(
-        '  /api/qr - QR code page'
-    );
-
-    console.log(
-        '  /health - Health check'
-    );
-
-});
-
-// =========================
-// Initialize WhatsApp
-// =========================
-
-async function startClient() {
+    botReady = false;
+    latestQR = null;
 
     try {
 
         console.log(
-            '🧹 Preparing WhatsApp profile...'
+            '🔄 Preparing WhatsApp client...'
         );
+
+        if (client) {
+
+            try {
+
+                await client.destroy();
+
+            } catch (error) {
+
+                console.log(
+                    '⚠️ Client destroy warning:',
+                    error.message
+                );
+            }
+
+            client = null;
+        }
+
+        if (deleteSession) {
+
+            deleteBrokenSession();
+
+            await delay(2000);
+        }
 
         prepareWhatsAppProfile();
 
@@ -723,11 +621,16 @@ async function startClient() {
             '🔧 Creating WhatsApp client...'
         );
 
-        client = createClient();
+        client =
+            createClient();
 
-        registerClientEvents(client);
+        registerClientEvents(
+            client
+        );
 
-        registerMessageHandler(client);
+        registerMessageHandler(
+            client
+        );
 
         console.log(
             '🔧 Initializing WhatsApp client...'
@@ -744,25 +647,475 @@ async function startClient() {
 
         botReady = false;
 
-        setTimeout(() => {
+    } finally {
 
-            console.log(
-                '🔄 Trying to initialize again...'
-            );
-
-            startClient();
-
-        }, 10000);
+        isRestarting = false;
     }
 }
 
-startClient();
+// =========================
+// Client Events
+// =========================
+
+function registerClientEvents(
+    currentClient
+) {
+
+    // QR
+    registerQREvent(
+        currentClient
+    );
+
+    // Authenticated
+    currentClient.on(
+        'authenticated',
+        () => {
+
+            console.log(
+                '✅ WhatsApp authenticated'
+            );
+        }
+    );
+
+    // Ready
+    currentClient.on(
+        'ready',
+        () => {
+
+            console.log(
+                '================================'
+            );
+
+            console.log(
+                '✅ WhatsApp BOT IS READY'
+            );
+
+            console.log(
+                '================================'
+            );
+
+            botReady = true;
+            latestQR = null;
+        }
+    );
+
+    // Auth failure
+    currentClient.on(
+        'auth_failure',
+        msg => {
+
+            console.error(
+                '❌ WhatsApp authentication failure:',
+                msg
+            );
+
+            botReady = false;
+        }
+    );
+
+    // Error
+    currentClient.on(
+        'error',
+        error => {
+
+            console.error(
+                '❌ WhatsApp client error:',
+                error
+            );
+        }
+    );
+
+    // Disconnected
+    currentClient.on(
+        'disconnected',
+        async reason => {
+
+            console.log(
+                '⚠️ WhatsApp disconnected:',
+                reason
+            );
+
+            botReady = false;
+
+            // LOGOUT = broken/invalid session
+            if (
+                String(reason)
+                    .toUpperCase() ===
+                'LOGOUT'
+            ) {
+
+                console.log(
+                    '🚪 WhatsApp session logged out'
+                );
+
+                console.log(
+                    '🧹 Starting clean session...'
+                );
+
+                await delay(3000);
+
+                await startFreshClient(
+                    true
+                );
+
+                return;
+            }
+
+            // Other disconnects
+            console.log(
+                '🔄 Attempting normal reconnect...'
+            );
+
+            await delay(5000);
+
+            await startFreshClient(
+                false
+            );
+        }
+    );
+}
+
+// =========================
+// API: QR
+// =========================
+
+app.get(
+    '/api/qr',
+    async (req, res) => {
+
+        try {
+
+            if (!latestQR) {
+
+                return res.send(`
+<!DOCTYPE html>
+<html lang="ar">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>WhatsApp QR</title>
+
+<style>
+
+body {
+    font-family: Arial;
+    text-align: center;
+    padding: 40px;
+    background: #111;
+    color: #fff;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>
+
+${
+    botReady
+        ? '✅ البوت متصل بالفعل'
+        : '⏳ انتظر، QR Code لم يظهر بعد'
+}
+
+</h2>
+
+</body>
+
+</html>
+                `);
+            }
+
+            const qrData =
+                await qrcode.toDataURL(
+                    latestQR
+                );
+
+            res.send(`
+<!DOCTYPE html>
+
+<html lang="ar">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>WhatsApp QR</title>
+
+<style>
+
+body {
+
+    margin: 0;
+
+    padding: 30px;
+
+    background: #111;
+
+    color: #fff;
+
+    font-family: Arial, sans-serif;
+
+    text-align: center;
+}
+
+img {
+
+    width: 300px;
+
+    max-width: 90%;
+
+    background: #fff;
+
+    padding: 15px;
+
+    border-radius: 10px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h2>
+📱 امسح QR من واتساب
+</h2>
+
+<img
+    src="${qrData}"
+    alt="WhatsApp QR"
+>
+
+<p>
+افتح واتساب ← الأجهزة المرتبطة ← ربط جهاز
+</p>
+
+</body>
+
+</html>
+            `);
+
+        } catch (error) {
+
+            console.error(
+                '❌ QR API error:',
+                error.message
+            );
+
+            res.status(500).json({
+
+                success: false,
+
+                error:
+                    error.message
+            });
+        }
+    }
+);
+
+// =========================
+// API: Status
+// =========================
+
+app.get(
+    '/api/status',
+    (req, res) => {
+
+        res.json({
+
+            success: true,
+
+            ready: botReady,
+
+            hasQR:
+                !!latestQR,
+
+            status:
+                botReady
+                    ? 'connected'
+                    : 'disconnected'
+        });
+    }
+);
+
+// =========================
+// API: Send
+// =========================
+
+app.post(
+    '/api/send',
+    async (req, res) => {
+
+        try {
+
+            const {
+                phone,
+                message
+            } = req.body;
+
+            if (
+                !phone ||
+                !message
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success: false,
+
+                        error:
+                            'phone and message are required'
+                    });
+            }
+
+            if (!botReady) {
+
+                return res
+                    .status(503)
+                    .json({
+
+                        success: false,
+
+                        error:
+                            'WhatsApp bot is not ready'
+                    });
+            }
+
+            const cleanPhone =
+                String(phone)
+                    .replace(
+                        /\D/g,
+                        ''
+                    );
+
+            if (!cleanPhone) {
+
+                return res
+                    .status(400)
+                    .json({
+
+                        success: false,
+
+                        error:
+                            'Invalid phone number'
+                    });
+            }
+
+            const chatId =
+                `${cleanPhone}@c.us`;
+
+            const sentMessage =
+                await client.sendMessage(
+                    chatId,
+                    String(message)
+                );
+
+            res.json({
+
+                success: true,
+
+                messageId:
+                    sentMessage
+                        .id
+                        ._serialized
+            });
+
+        } catch (error) {
+
+            console.error(
+                '❌ Send message error:',
+                error.message
+            );
+
+            res.status(500).json({
+
+                success: false,
+
+                error:
+                    error.message
+            });
+        }
+    }
+);
+
+// =========================
+// Health
+// =========================
+
+app.get(
+    '/health',
+    (req, res) => {
+
+        res.status(200).json({
+
+            status: 'ok',
+
+            whatsapp:
+                botReady
+                    ? 'ready'
+                    : 'not_ready'
+        });
+    }
+);
+
+// =========================
+// Server
+// =========================
+
+app.listen(
+    PORT,
+    () => {
+
+        console.log(
+            `🚀 Server running on port ${PORT}`
+        );
+
+        console.log(
+            '  /api/status - Bot status'
+        );
+
+        console.log(
+            '📊 API endpoints:'
+        );
+
+        console.log(
+            '  /api/send - Send WhatsApp message'
+        );
+
+        console.log(
+            '  /api/qr - QR code page'
+        );
+
+        console.log(
+            '  /health - Health check'
+        );
+    }
+);
+
+// =========================
+// Start
+// =========================
+
+startFreshClient(false);
 
 // =========================
 // Graceful Shutdown
 // =========================
 
-async function shutdown(signal) {
+async function shutdown(
+    signal
+) {
 
     console.log(
         `\n🛑 Received ${signal}`
@@ -771,6 +1124,7 @@ async function shutdown(signal) {
     try {
 
         if (client) {
+
             await client.destroy();
         }
 
@@ -780,7 +1134,6 @@ async function shutdown(signal) {
             '⚠️ Shutdown error:',
             error.message
         );
-
     }
 
     process.exit(0);
