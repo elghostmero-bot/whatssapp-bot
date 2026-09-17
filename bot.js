@@ -1,6 +1,6 @@
 const express = require('express')
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js')
-const qrcode = require('qrcode-terminal')
+const qrcode = require('qrcode')
 const axios = require('axios')
 const fs = require('fs')
 const path = require('path')
@@ -13,6 +13,8 @@ const tempDir = '/tmp/wwebjs_auth_' + Date.now()
 if (!fs.existsSync(tempDir)) {
   fs.mkdirSync(tempDir, { recursive: true })
 }
+
+let currentQR = null
 
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: "samia-bot", dataPath: tempDir }),
@@ -63,13 +65,17 @@ function loadData() {
 
 loadData()
 
-client.on('qr', qr => {
-  console.log('Scan QR code:')
-  qrcode.generate(qr, { small: true })
+client.on('qr', async qr => {
+  console.log('QR code generated')
+  currentQR = qr
+  // Also print to terminal for quick scan
+  const qrTerminal = require('qrcode-terminal')
+  qrTerminal.generate(qr, { small: true })
 })
 
 client.on('authenticated', () => {
   console.log('Bot authenticated')
+  currentQR = null
 })
 
 client.on('ready', () => {
@@ -97,6 +103,26 @@ client.on('message', async msg => {
 app.use(express.json())
 app.use(express.static('.'))
 
+// QR Code endpoint
+app.get('/api/qr', async (req, res) => {
+  if (!currentQR) {
+    return res.json({ 
+      authenticated: true, 
+      message: 'Bot is already authenticated' 
+    })
+  }
+  
+  try {
+    const qrImage = await qrcode.toDataURL(currentQR)
+    res.json({ 
+      qr: qrImage,
+      authenticated: false
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
 app.post('/api/send', async (req, res) => {
   const { phone, message } = req.body
   
@@ -114,7 +140,10 @@ app.post('/api/send', async (req, res) => {
 })
 
 app.get('/api/ready', (req, res) => {
-  res.json({ ready: client.info ? true : false })
+  res.json({ 
+    ready: client.info ? true : false,
+    authenticated: currentQR ? false : true 
+  })
 })
 
 app.listen(PORT, () => {
@@ -135,3 +164,4 @@ process.on('SIGINT', async () => {
   
   process.exit(0)
 })
+
