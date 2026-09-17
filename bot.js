@@ -4,11 +4,6 @@ const qrcode = require('qrcode')
 const fs = require('fs')
 const path = require('path')
 
-// Puppeteer with stealth plugin
-const PuppeteerExtra = require('puppeteer-extra')
-const StealthPlugin = require('puppeteer-extra-plugin-stealth')
-PuppeteerExtra.use(StealthPlugin())
-
 const app = express()
 const PORT = process.env.PORT || 3000
 
@@ -27,8 +22,6 @@ const client = new Client({
   }),
   puppeteer: {
     headless: true,
-    browserWSEndpoint: null,
-    browserProcess: null,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -43,45 +36,13 @@ const client = new Client({
       '--hide-scrollbars',
       '--mute-audio',
       '--disable-plugins',
-      '--disable-component-extensions-with-background-pages',
-      '--disable-default-apps',
-      '--enable-automation',
-      '--no-service-autorun',
-      '--password-store=basic',
-      '--use-mock-keychain',
-      '--disable-blink-features=AutomationControlled',
-      '--disable-features=TranslateUI',
-      '--metrics-recording-only',
-      '--mute-audio',
-      '--no-default-browser-check',
-      '--no-pings',
-      '--no-zygote',
       '--use-gl=swiftshader',
-      '--disable-file-system',
-      '--disable-local-storage',
-      '--disable-popup-blocking',
-      '--disable-prompt-on-repost',
-      '--disable-renderer-backgrounding',
-      '--disable-device-discovery-notifications',
-      '--single-process=false'
-    ],
-    launch: {
-      headless: 'new'
-    }
-  },
-  webVersionCache: {
-    type: 'local',
-    path: authPath
+      '--disable-software-rasterizer',
+      '--disable-blink-features=AutomationControlled',
+      '--disable-device-discovery-notifications'
+    ]
   }
 })
-
-// Overwrite the launch function
-const originalLaunch = Client.prototype._launch
-Client.prototype._launch = async function() {
-  const browser = await PuppeteerExtra.launch(this.options.puppeteer)
-  this.pupBrowser = browser
-  return browser
-}
 
 // Function delays
 function humanDelay(min = 10000, max = 15000) {
