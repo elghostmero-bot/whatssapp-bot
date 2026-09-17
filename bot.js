@@ -49,25 +49,34 @@ client.on("qr", qr => {
 });
 
 client.on("authenticated", () => {
-    console.log("✅ WhatsApp authenticated");
+    console.log("WhatsApp authenticated");
 });
 
 client.on("ready", () => {
     console.log("================================");
-    console.log("✅ WhatsApp Bot Ready");
+    console.log("WhatsApp Bot Ready");
     console.log("================================");
 });
 
 client.on("auth_failure", msg => {
-    console.log("❌ WhatsApp authentication failure:", msg);
+    console.log(
+        "WhatsApp authentication failure:",
+        msg
+    );
 });
 
 client.on("disconnected", reason => {
-    console.log("⚠️ WhatsApp disconnected:", reason);
+    console.log(
+        "WhatsApp disconnected:",
+        reason
+    );
 });
 
 client.on("error", err => {
-    console.log("❌ WhatsApp client error:", err.message);
+    console.log(
+        "WhatsApp client error:",
+        err.message
+    );
 });
 
 // =========================
@@ -75,6 +84,7 @@ client.on("error", err => {
 // =========================
 
 function formatNumber(num) {
+
     num = String(num).replace(/\D/g, "");
 
     if (num.startsWith("20")) {
@@ -97,11 +107,14 @@ function formatNumber(num) {
 // =========================
 
 function humanDelay(min = 1500, max = 4000) {
+
     return new Promise(resolve => {
+
         setTimeout(
             resolve,
             min + Math.random() * (max - min)
         );
+
     });
 }
 
@@ -110,6 +123,7 @@ function humanDelay(min = 1500, max = 4000) {
 // =========================
 
 function isIgnored(text) {
+
     if (!text) {
         return true;
     }
@@ -125,7 +139,8 @@ function isIgnored(text) {
         return true;
     }
 
-    const low = text.trim().toLowerCase();
+    const low =
+        text.trim().toLowerCase();
 
     return [
         "ok",
@@ -147,73 +162,77 @@ function isIgnored(text) {
 
 client.on("message", async msg => {
 
-    try {
+    if (msg.fromMe) {
+        return;
+    }
 
-        // Ignore own messages
-        if (msg.fromMe) {
-            return;
-        }
+    if (msg.from === "status@broadcast") {
+        return;
+    }
 
-        // Ignore status
-        if (msg.from === "status@broadcast") {
-            return;
-        }
+    if (msg.from.includes("@g.us")) {
+        return;
+    }
 
-        // Ignore groups
-        if (msg.from.includes("@g.us")) {
-            return;
-        }
+    if (isIgnored(msg.body)) {
+        return;
+    }
 
-        // Ignore empty/common messages
-        if (isIgnored(msg.body)) {
-            return;
-        }
-
-        const phone = formatNumber(
+    const phone =
+        formatNumber(
             msg.from.replace("@c.us", "")
         );
 
-        console.log(
-            `📩 WhatsApp message from ${phone}: ${msg.body}`
-        );
+    console.log(
+        "WhatsApp message from " +
+        phone +
+        ": " +
+        msg.body
+    );
+
+    try {
 
         await humanDelay(2000, 4500);
 
         // =========================
-        // Send to AI API
+        // Ask Application AI
         // =========================
 
         if (!APP_URL || !AI_SECRET_KEY) {
 
             console.log(
-                "❌ APP_URL or AI_SECRET_KEY is missing"
+                "AI API configuration is missing"
             );
 
             return;
         }
 
-        const response = await fetch(
-            `${APP_URL}/api/ai/respond`,
-            {
-                method: "POST",
+        const response =
+            await fetch(
+                APP_URL + "/api/ai/respond",
+                {
+                    method: "POST",
 
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": AI_SECRET_KEY
-                },
+                    headers: {
+                        "Content-Type":
+                            "application/json",
 
-                body: JSON.stringify({
-                    branchId: BRANCH_ID,
-                    phone: phone,
-                    message: msg.body
-                })
-            }
-        );
+                        "x-api-key":
+                            AI_SECRET_KEY
+                    },
+
+                    body: JSON.stringify({
+                        branchId: BRANCH_ID,
+                        phone: phone,
+                        message: msg.body
+                    })
+                }
+            );
 
         if (!response.ok) {
 
             console.log(
-                "❌ AI API error:",
+                "AI API error:",
                 response.status,
                 await response.text()
             );
@@ -221,23 +240,26 @@ client.on("message", async msg => {
             return;
         }
 
-        const data = await response.json();
+        const data =
+            await response.json();
 
-        const reply = data.reply;
+        const reply =
+            data.reply;
 
         if (reply) {
 
             await msg.reply(reply);
 
             console.log(
-                `✅ AI reply sent to ${phone}`
+                "AI reply sent to " +
+                phone
             );
         }
 
     } catch (err) {
 
         console.log(
-            "❌ WhatsApp message error:",
+            "ERROR:",
             err.message
         );
     }
@@ -251,10 +273,11 @@ app.post(
     "/send-message",
     async (req, res) => {
 
-        let {
-            phone,
-            message
-        } = req.body;
+        let phone =
+            req.body.phone;
+
+        const message =
+            req.body.message;
 
         if (!phone || !message) {
 
@@ -266,7 +289,8 @@ app.post(
                 });
         }
 
-        phone = formatNumber(phone);
+        phone =
+            formatNumber(phone);
 
         try {
 
@@ -281,7 +305,8 @@ app.post(
             );
 
             console.log(
-                `✅ Message sent to ${phone}`
+                "Message sent to " +
+                phone
             );
 
             res.json({
@@ -291,7 +316,7 @@ app.post(
         } catch (err) {
 
             console.log(
-                "❌ Send message error:",
+                "Send message error:",
                 err.message
             );
 
@@ -331,7 +356,7 @@ app.get(
         ) {
 
             console.log(
-                "✅ WEBHOOK VERIFIED"
+                "WEBHOOK VERIFIED"
             );
 
             return res
@@ -357,7 +382,10 @@ app.post(
             return res.sendStatus(200);
         }
 
-        for (const entry of body.entry || []) {
+        for (
+            const entry of
+            body.entry || []
+        ) {
 
             const events =
                 entry.messaging;
@@ -366,7 +394,9 @@ app.post(
                 continue;
             }
 
-            for (const ev of events) {
+            for (
+                const ev of events
+            ) {
 
                 if (
                     !ev.sender ||
@@ -393,7 +423,7 @@ app.post(
                     ) {
 
                         console.log(
-                            "❌ APP_URL or AI_SECRET_KEY is missing"
+                            "AI API configuration is missing"
                         );
 
                         continue;
@@ -401,7 +431,8 @@ app.post(
 
                     const ai =
                         await fetch(
-                            `${APP_URL}/api/ai/respond`,
+                            APP_URL +
+                            "/api/ai/respond",
                             {
                                 method: "POST",
 
@@ -413,23 +444,24 @@ app.post(
                                         AI_SECRET_KEY
                                 },
 
-                                body: JSON.stringify({
-                                    branchId:
-                                        BRANCH_ID,
+                                body:
+                                    JSON.stringify({
+                                        branchId:
+                                            BRANCH_ID,
 
-                                    phone:
-                                        sender_psid,
+                                        phone:
+                                            sender_psid,
 
-                                    message:
-                                        text
-                                })
+                                        message:
+                                            text
+                                    })
                             }
                         );
 
                     if (!ai.ok) {
 
                         console.log(
-                            "❌ Messenger AI API error:",
+                            "Messenger AI API error:",
                             ai.status,
                             await ai.text()
                         );
@@ -450,14 +482,15 @@ app.post(
                     if (!FB_PAGE_TOKEN) {
 
                         console.log(
-                            "❌ FB_PAGE_TOKEN is missing"
+                            "FB_PAGE_TOKEN is missing"
                         );
 
                         continue;
                     }
 
                     await fetch(
-                        `https://graph.facebook.com/v18.0/me/messages?access_token=${FB_PAGE_TOKEN}`,
+                        "https://graph.facebook.com/v18.0/me/messages?access_token=" +
+                        FB_PAGE_TOKEN,
                         {
                             method: "POST",
 
@@ -466,31 +499,33 @@ app.post(
                                     "application/json"
                             },
 
-                            body: JSON.stringify({
-                                messaging_type:
-                                    "RESPONSE",
+                            body:
+                                JSON.stringify({
+                                    messaging_type:
+                                        "RESPONSE",
 
-                                recipient: {
-                                    id:
-                                        sender_psid
-                                },
+                                    recipient: {
+                                        id:
+                                            sender_psid
+                                    },
 
-                                message: {
-                                    text:
-                                        reply
-                                }
-                            })
+                                    message: {
+                                        text:
+                                            reply
+                                    }
+                                })
                         }
                     );
 
                     console.log(
-                        `✅ Messenger reply sent to ${sender_psid}`
+                        "Messenger reply sent to " +
+                        sender_psid
                     );
 
                 } catch (err) {
 
                     console.log(
-                        "❌ Messenger error:",
+                        "Messenger error:",
                         err.message
                     );
                 }
@@ -510,6 +545,7 @@ app.post(
 app.get(
     "/",
     (req, res) => {
+
         res.send(
             "WhatsApp bot is running"
         );
@@ -534,14 +570,16 @@ app.get(
 // Start Server
 // =========================
 
+const PORT =
+    process.env.PORT || 3000;
+
 app.listen(
-    process.env.PORT || 3000,
+    PORT,
     () => {
 
         console.log(
-            `🚀 Server running on port ${
-                process.env.PORT || 3000
-            }`
+            "Server running on port " +
+            PORT
         );
     }
 );
@@ -551,7 +589,7 @@ app.listen(
 // =========================
 
 console.log(
-    "🔧 Initializing WhatsApp client..."
+    "Initializing WhatsApp client..."
 );
 
 client.initialize();
@@ -560,8 +598,3 @@ module.exports = {
     client
 };
 ```
-ده **ملف `bot.js` كامل** مبني على النسخة القديمة، وحافظت فيه على الـAI والـMessenger والإرسال والـwebhook.
-
-**مهم:** أنا متعمد ما أضيفش أي `userDataDir` أو حذف للـsession أو reconnect تلقائي في النسخة دي.
-
-بعد ما تستبدله وتعمل Deploy، **ما تمسحش QR بسرعة**. أول حاجة نشوف هل يظهر `QR Code received`، وبعد المسح نشوف هل يظهر `WhatsApp authenticated` ثم `WhatsApp Bot Ready`.
