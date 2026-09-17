@@ -53,12 +53,16 @@ let salonData = {}
 function loadData() {
   try {
     repliesData = JSON.parse(fs.readFileSync('replies.json', 'utf8'))
+    console.log(`Loaded ${Object.keys(repliesData).length} replies`)
   } catch (e) {
+    console.error('Error loading replies:', e.message)
     repliesData = {}
   }
   try {
     salonData = JSON.parse(fs.readFileSync('salon-data.txt', 'utf8'))
+    console.log(`Loaded salon data`)
   } catch (e) {
+    console.error('Error loading salon data:', e.message)
     salonData = {}
   }
 }
@@ -66,7 +70,7 @@ function loadData() {
 loadData()
 
 client.on('qr', async qr => {
-  console.log('QR code generated')
+  console.log('📱 QR code generated - scan to authenticate')
   currentQR = qr
   // Also print to terminal for quick scan
   const qrTerminal = require('qrcode-terminal')
@@ -74,29 +78,58 @@ client.on('qr', async qr => {
 })
 
 client.on('authenticated', () => {
-  console.log('Bot authenticated')
+  console.log('✅ Bot authenticated successfully')
   currentQR = null
 })
 
 client.on('ready', () => {
-  console.log('Bot is ready')
+  console.log('🟢 Bot is ready and listening for messages')
 })
 
 client.on('message', async msg => {
+  console.log(`[MSG] Received: "${msg.body}" from ${msg.from}`)
+  
+  // Skip group messages
+  if (msg.isGroupMsg) {
+    console.log(`[SKIP] Group message, ignoring`)
+    return
+  }
+  
+  // Skip bot's own messages
+  if (msg.fromMe) {
+    console.log(`[SKIP] Own message, ignoring`)
+    return
+  }
+  
   await humanDelay()
   
-  const text = msg.body.toLowerCase()
-  const phone = msg.from.replace('@c.us', '')
-
+  const text = msg.body.toLowerCase().trim()
+  console.log(`[SEARCH] Looking for reply for: "${text}"`)
+  
   // Try to find reply
   let reply = repliesData[text] || null
   
   if (reply) {
+    console.log(`[FOUND] Found reply: "${reply}"`)
     await outgoingMessageDelay()
-    await msg.reply(reply)
+    try {
+      await msg.reply(reply)
+      console.log(`[SENT] ✓ Reply sent`)
+    } catch (e) {
+      console.error(`[ERROR] Failed to send reply:`, e.message)
+    }
   } else {
-    console.log(`No reply for: ${text}`)
+    console.log(`[NO_REPLY] No matching reply for: "${text}"`)
+    console.log(`[DEBUG] Available keys sample:`, Object.keys(repliesData).slice(0, 5))
   }
+})
+
+client.on('disconnected', (reason) => {
+  console.log('❌ Bot disconnected:', reason)
+})
+
+client.on('error', (error) => {
+  console.error('❌ Client error:', error)
 })
 
 // Express routes
@@ -172,6 +205,15 @@ app.get('/api/qr', async (req, res) => {
   }
 })
 
+app.get('/api/status', (req, res) => {
+  res.json({
+    authenticated: !currentQR,
+    botReady: client.info ? true : false,
+    repliesLoaded: Object.keys(repliesData).length,
+    ready: client.info ? true : false
+  })
+})
+
 app.post('/api/send', async (req, res) => {
   const { phone, message } = req.body
   
@@ -196,14 +238,14 @@ app.get('/api/ready', (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
+  console.log(`🚀 Server running on port ${PORT}`)
 })
 
 client.initialize()
 
 // Cleanup on exit
 process.on('SIGINT', async () => {
-  console.log('Shutting down...')
+  console.log('🛑 Shutting down...')
   await client.destroy()
   
   // Clean temp directory
@@ -213,3 +255,4 @@ process.on('SIGINT', async () => {
   
   process.exit(0)
 })
+
