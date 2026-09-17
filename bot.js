@@ -63,13 +63,13 @@ function formatNumber(num) {
   return num
 }
 
-function humanDelay(min = 5000, max = 10000) {
+function humanDelay(min = 10000, max = 15000) {
   return new Promise(r => setTimeout(r, min + Math.random() * (max - min)))
 }
 
 
 // Extra delay for outgoing messages (2-4 seconds)
-function outgoingMessageDelay(min = 3000, max = 7000) {
+function outgoingMessageDelay(min = 5000, max = 10000) {
   return new Promise(r => setTimeout(r, min + Math.random() * (max - min)))
 }
 function isIgnoredText(text) {
