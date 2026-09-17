@@ -7,1038 +7,642 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(express.json({ limit: '10mb' }));
 
-// ============================================================
-// DATA
-// ============================================================
+const PORT = process.env.PORT || 8080;
 
-let repliesData = {};
-let currentQR = null;
-let clientReady = false;
+let botReady = false;
+let latestQR = null;
+let client = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
-let restartAttempts = 0;
-const MAX_RESTART_ATTEMPTS = 5;
-
-// ============================================================
-// LOAD REPLIES
-// ============================================================
+// =========================
+// Load Replies
+// =========================
 
 function loadData() {
-  try {
-    const filePath = path.join(__dirname, 'replies.json');
+    try {
+        const filePath = path.join(__dirname, 'replies.json');
 
-    if (!fs.existsSync(filePath)) {
-      console.warn(`⚠️ replies.json not found at: ${filePath}`);
-      repliesData = {};
-      return;
-    }
-
-    const raw = fs.readFileSync(filePath, 'utf8');
-    const parsed = JSON.parse(raw);
-
-    // Support replies.json format:
-    // [
-    //   {
-    //     "keywords": ["حجاب", "حجاب كامل"],
-    //     "reply": "حجاب كامل ب 500"
-    //   }
-    // ]
-
-    if (Array.isArray(parsed)) {
-      repliesData = {};
-
-      for (const item of parsed) {
-        if (
-          !item ||
-          !Array.isArray(item.keywords) ||
-          !item.reply
-        ) {
-          continue;
+        if (!fs.existsSync(filePath)) {
+            console.error('❌ replies.json not found');
+            return [];
         }
 
-        for (const keyword of item.keywords) {
-          if (
-            typeof keyword === 'string' &&
-            keyword.trim()
-          ) {
-            repliesData[
-              keyword.toLowerCase().trim()
-            ] = item.reply;
-          }
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+        if (Array.isArray(data)) {
+            console.log(`📚 Loaded ${data.length} reply keywords`);
+            return data;
         }
-      }
+
+        if (data && typeof data === 'object') {
+            const result = [];
+
+            for (const [category, value] of Object.entries(data)) {
+                if (typeof value === 'string') {
+                    result.push({
+                        category,
+                        keywords: [category],
+                        reply: value
+                    });
+                } else if (value && typeof value === 'object') {
+                    result.push({
+                        category,
+                        keywords: value.keywords || [category],
+                        reply: value.reply || value.response || ''
+                    });
+                }
+            }
+
+            console.log(`📚 Loaded ${result.length} reply keywords`);
+            return result;
+        }
+
+        console.error('❌ Invalid replies.json format');
+        return [];
+
+    } catch (error) {
+        console.error('❌ Error loading replies.json:', error.message);
+        return [];
     }
-
-    // Also support object format
-    else if (
-      parsed &&
-      typeof parsed === 'object'
-    ) {
-      repliesData = parsed;
-    }
-
-    else {
-      repliesData = {};
-    }
-
-    console.log(
-      `📚 Loaded ${Object.keys(repliesData).length} reply keywords`
-    );
-
-  } catch (error) {
-    console.error(
-      `❌ Failed to load replies.json: ${error.message}`
-    );
-
-    repliesData = {};
-  }
 }
 
-loadData();
+const replies = loadData();
 
-// ============================================================
-// ARABIC NORMALIZATION
-// ============================================================
+// =========================
+// Arabic Normalization
+// =========================
 
-function normalizeArabic(text = '') {
-  return String(text)
-    .toLowerCase()
-    .trim()
+function normalizeArabic(text) {
+    if (!text) return '';
 
-    // Arabic normalization
-    .replace(/[إأآا]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه')
-    .replace(/ؤ/g, 'و')
-    .replace(/ئ/g, 'ي')
-
-    // Remove tatweel
-    .replace(/ـ/g, '')
-
-    // Remove Arabic diacritics
-    .replace(/[ًٌٍَُِّْـ]/g, '')
-
-    // Normalize spaces
-    .replace(/\s+/g, ' ');
+    return String(text)
+        .toLowerCase()
+        .replace(/[إأآا]/g, 'ا')
+        .replace(/ى/g, 'ي')
+        .replace(/ة/g, 'ه')
+        .replace(/ؤ/g, 'و')
+        .replace(/ئ/g, 'ي')
+        .replace(/ـ/g, '')
+        .replace(/[\u064B-\u065F\u0670]/g, '')
+        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
-// ============================================================
-// FIND REPLY
-// ============================================================
+// =========================
+// Find Reply
+// =========================
 
-function findReply(messageText = '') {
+function findReply(messageText) {
+    const text = normalizeArabic(messageText);
 
-  const text = normalizeArabic(messageText);
-
-  if (!text) {
-    return null;
-  }
-
-  // Exact match first
-  for (const [keyword, reply] of Object.entries(repliesData)) {
-
-    if (
-      normalizeArabic(keyword) === text
-    ) {
-      return reply;
+    if (!text) {
+        return null;
     }
-  }
 
-  // Longest keyword first
-  const entries = Object.entries(repliesData)
-    .sort(
-      (a, b) =>
-        normalizeArabic(b[0]).length -
-        normalizeArabic(a[0]).length
-    );
+    // Exact keyword match first
+    for (const item of replies) {
+        const keywords = Array.isArray(item.keywords)
+            ? item.keywords
+            : [item.keywords];
 
-  // Keyword inside customer's message
-  for (const [keyword, reply] of entries) {
+        for (const keyword of keywords) {
+            const normalizedKeyword = normalizeArabic(keyword);
 
-    const normalizedKeyword =
-      normalizeArabic(keyword);
-
-    if (
-      normalizedKeyword &&
-      text.includes(normalizedKeyword)
-    ) {
-      return reply;
+            if (normalizedKeyword && text === normalizedKeyword) {
+                return item.reply;
+            }
+        }
     }
-  }
 
-  return null;
+    // Longest matching keyword
+    let bestMatch = null;
+    let bestLength = 0;
+
+    for (const item of replies) {
+        const keywords = Array.isArray(item.keywords)
+            ? item.keywords
+            : [item.keywords];
+
+        for (const keyword of keywords) {
+            const normalizedKeyword = normalizeArabic(keyword);
+
+            if (
+                normalizedKeyword &&
+                text.includes(normalizedKeyword) &&
+                normalizedKeyword.length > bestLength
+            ) {
+                bestMatch = item.reply;
+                bestLength = normalizedKeyword.length;
+            }
+        }
+    }
+
+    return bestMatch;
 }
 
-// ============================================================
-// DELAYS
-// ============================================================
+// =========================
+// Delay
+// =========================
 
-function humanDelay(
-  min = 1000,
-  max = 2500
-) {
-  return new Promise(resolve => {
-
-    const delay =
-      min +
-      Math.random() * (max - min);
-
-    setTimeout(resolve, delay);
-  });
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function outgoingMessageDelay(
-  min = 500,
-  max = 1200
-) {
-  return new Promise(resolve => {
-
-    const delay =
-      min +
-      Math.random() * (max - min);
-
-    setTimeout(resolve, delay);
-  });
-}
-
-// ============================================================
-// WHATSAPP AUTH PATH
-// ============================================================
-
-// Replit:
-// .wwebjs_auth inside project directory.
-//
-// Railway:
-// You can set WWEBJS_AUTH_PATH in Variables
-// if using a Persistent Volume.
-//
-// Example:
-// WWEBJS_AUTH_PATH=/app/.wwebjs_auth
+// =========================
+// WhatsApp Client
+// =========================
 
 const authPath =
-  process.env.WWEBJS_AUTH_PATH ||
-  path.join(__dirname, '.wwebjs_auth');
+    process.env.WWEBJS_AUTH_PATH ||
+    path.join(__dirname, '.wwebjs_auth');
 
-fs.mkdirSync(
-  authPath,
-  {
-    recursive: true
-  }
-);
+console.log(`📁 WhatsApp auth path: ${authPath}`);
 
-console.log(
-  `📁 WhatsApp auth path: ${authPath}`
-);
+function createClient() {
+    return new Client({
+        authStrategy: new LocalAuth({
+            clientId: 'samia-bot',
+            dataPath: authPath
+        }),
 
-// ============================================================
-// WHATSAPP CLIENT
-// ============================================================
+        puppeteer: {
+            headless: true,
 
-const client = new Client({
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--disable-background-networking',
+                '--disable-background-timer-throttling',
+                '--disable-renderer-backgrounding',
+                '--disable-features=Translate,BackForwardCache',
+                '--no-first-run',
+                '--no-default-browser-check',
+                '--disable-popup-blocking',
+                '--disable-notifications',
+                '--disable-sync'
+            ]
+        }
+    });
+}
 
-  authStrategy: new LocalAuth({
+client = createClient();
 
-    clientId: 'samia-bot',
+// =========================
+// QR
+// =========================
 
-    dataPath: authPath
+client.on('qr', async qr => {
+    console.log('📱 QR Code received');
 
-  }),
+    latestQR = qr;
+    botReady = false;
 
-  puppeteer: {
+    qrcodeTerminal.generate(qr, {
+        small: true
+    });
 
-    headless: true,
-
-    // IMPORTANT:
-    // Use a fresh Chromium profile for every process.
-    // This prevents stale profile locks on Railway/Replit.
-
-    userDataDir: path.join(
-      '/tmp',
-      `chrome-profile-${process.pid}`
-    ),
-
-    args: [
-
-      '--no-sandbox',
-
-      '--disable-setuid-sandbox',
-
-      '--disable-dev-shm-usage',
-
-      '--disable-gpu',
-
-      '--disable-software-rasterizer',
-
-      '--disable-extensions',
-
-      '--disable-background-networking',
-
-      '--disable-background-timer-throttling',
-
-      '--disable-renderer-backgrounding',
-
-      '--disable-features=Translate,BackForwardCache',
-
-      '--no-first-run',
-
-      '--no-default-browser-check',
-
-      '--disable-popup-blocking',
-
-      '--disable-notifications',
-
-      '--disable-sync'
-
-    ],
-
-    timeout: 60000,
-
-    dumpio: false
-
-  },
-
-  webVersionCache: {
-
-    type: 'local',
-
-    path: path.join(
-      __dirname,
-      '.wwebjs_cache'
-    )
-
-  }
-
+    try {
+        await qrcode.toDataURL(qr);
+    } catch (error) {
+        console.error('❌ QR conversion error:', error.message);
+    }
 });
 
-// ============================================================
-// QR EVENT
-// ============================================================
+// =========================
+// Authenticated
+// =========================
 
-client.on(
-  'qr',
-  async qr => {
+client.on('authenticated', () => {
+    console.log('✅ WhatsApp authenticated');
+});
 
-    console.log(
-      '📱 [QR] New QR code generated'
-    );
+// =========================
+// Ready
+// =========================
 
-    console.log(
-      '📱 [QR] Scan the QR code with WhatsApp'
-    );
+client.on('ready', () => {
+    console.log('================================');
+    console.log('✅ WhatsApp BOT IS READY');
+    console.log('================================');
 
-    currentQR = qr;
+    botReady = true;
+    latestQR = null;
+    reconnectAttempts = 0;
+});
 
-    try {
+// =========================
+// Auth Failure
+// =========================
 
-      qrcodeTerminal.generate(
-        qr,
-        {
-          small: true
-        }
-      );
+client.on('auth_failure', msg => {
+    console.error('❌ WhatsApp authentication failure:', msg);
 
-    } catch (error) {
+    botReady = false;
+});
 
-      console.error(
-        `❌ [QR] Terminal error: ${error.message}`
-      );
+// =========================
+// Disconnected
+// =========================
 
+client.on('disconnected', async reason => {
+    console.log('⚠️ WhatsApp disconnected:', reason);
+
+    botReady = false;
+
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        console.error('❌ Maximum reconnect attempts reached');
+        return;
     }
 
-  }
-);
-
-// ============================================================
-// AUTHENTICATED
-// ============================================================
-
-client.on(
-  'authenticated',
-  () => {
+    reconnectAttempts++;
 
     console.log(
-      '✅ [AUTH] Bot authenticated'
+        `🔄 Reconnecting... attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`
     );
 
-    currentQR = null;
+    await delay(5000);
 
-    restartAttempts = 0;
+    try {
+        await client.destroy();
+    } catch (error) {
+        console.log('⚠️ Destroy warning:', error.message);
+    }
 
-  }
-);
+    try {
+        client = createClient();
+        registerClientEvents(client);
+        await client.initialize();
+    } catch (error) {
+        console.error('❌ Reconnect failed:', error.message);
+    }
+});
 
-// ============================================================
-// READY
-// ============================================================
+// =========================
+// Error
+// =========================
 
-client.on(
-  'ready',
-  () => {
+client.on('error', error => {
+    console.error('❌ WhatsApp client error:', error);
+});
 
-    console.log(
-      '🟢 [READY] Bot online and listening for messages'
-    );
+// =========================
+// Message Handler
+// =========================
 
-    clientReady = true;
+function registerMessageHandler(currentClient) {
+    currentClient.on('message', async msg => {
+        try {
+            // Ignore own messages
+            if (msg.fromMe) {
+                return;
+            }
 
-    currentQR = null;
+            // Ignore groups
+            if (msg.from && msg.from.endsWith('@g.us')) {
+                return;
+            }
 
-    restartAttempts = 0;
+            // Ignore status
+            if (msg.from === 'status@broadcast') {
+                return;
+            }
 
-  }
-);
+            const body = (msg.body || '').trim();
 
-// ============================================================
-// AUTH FAILURE
-// ============================================================
+            if (!body) {
+                return;
+            }
 
-client.on(
-  'auth_failure',
-  message => {
-
-    clientReady = false;
-
-    console.error(
-      `❌ [AUTH_FAILURE] ${message}`
-    );
-
-  }
-);
-
-// ============================================================
-// DISCONNECTED
-// ============================================================
-
-client.on(
-  'disconnected',
-  reason => {
-
-    clientReady = false;
-
-    console.log(
-      `❌ [DISCONNECT] Reason: ${reason}`
-    );
-
-    if (
-      restartAttempts <
-      MAX_RESTART_ATTEMPTS
-    ) {
-
-      restartAttempts++;
-
-      console.log(
-        `🔄 [RESTART] Attempt ${restartAttempts}/${MAX_RESTART_ATTEMPTS}`
-      );
-
-      setTimeout(
-        () => {
-
-          client
-            .initialize()
-            .catch(
-              error => {
-
-                console.error(
-                  `❌ [RESTART_ERROR] ${error.message}`
-                );
-
-              }
+            console.log(
+                `📩 Message from ${msg.from}: ${body}`
             );
 
-        },
-        3000
-      );
+            const reply = findReply(body);
 
-    } else {
+            if (!reply) {
+                console.log('❓ No matching reply found');
+                return;
+            }
 
-      console.log(
-        '⚠️ [ERROR] Max restart attempts reached. Manual intervention needed.'
-      );
+            console.log(`💬 Reply: ${reply}`);
 
-    }
+            await delay(800);
 
-  }
-);
+            await msg.reply(reply);
 
-// ============================================================
-// GENERAL ERROR
-// ============================================================
+            console.log('✅ Reply sent');
 
-client.on(
-  'error',
-  error => {
+        } catch (error) {
+            console.error(
+                '❌ Message handling error:',
+                error.message
+            );
+        }
+    });
+}
 
-    console.error(
-      `❌ [ERROR] ${error.message}`
-    );
+// =========================
+// Register all Client Events
+// =========================
 
-  }
-);
+function registerClientEvents(currentClient) {
+    currentClient.on('qr', async qr => {
+        console.log('📱 QR Code received');
 
-// ============================================================
-// RECEIVE MESSAGE
-// ============================================================
+        latestQR = qr;
+        botReady = false;
 
-client.on(
-  'message',
-  async msg => {
+        qrcodeTerminal.generate(qr, {
+            small: true
+        });
 
-    try {
+        try {
+            await qrcode.toDataURL(qr);
+        } catch (error) {
+            console.error(
+                '❌ QR conversion error:',
+                error.message
+            );
+        }
+    });
 
-      // Ignore own messages
-      if (msg.fromMe) {
-        return;
-      }
+    currentClient.on('authenticated', () => {
+        console.log('✅ WhatsApp authenticated');
+    });
 
-      // Ignore groups
-      if (msg.isGroupMsg) {
-        return;
-      }
+    currentClient.on('ready', () => {
+        console.log('================================');
+        console.log('✅ WhatsApp BOT IS READY');
+        console.log('================================');
 
-      // Extra group protection
-      if (
-        typeof msg.from === 'string' &&
-        msg.from.endsWith('@g.us')
-      ) {
-        return;
-      }
+        botReady = true;
+        latestQR = null;
+        reconnectAttempts = 0;
+    });
 
-      // Ignore WhatsApp status
-      if (
-        typeof msg.from === 'string' &&
-        msg.from === 'status@broadcast'
-      ) {
-        return;
-      }
-
-      const text =
-        (msg.body || '').trim();
-
-      // Ignore empty messages
-      if (!text) {
-        return;
-      }
-
-      console.log(
-        `📨 [MSG] From: ${
-          (msg.from || '')
-            .replace('@c.us', '')
-        } | "${text}"`
-      );
-
-      // Human-like delay
-      await humanDelay();
-
-      // Find reply
-      const reply =
-        findReply(text);
-
-      // No matching reply
-      if (!reply) {
-
-        console.log(
-          `✗ [NO_MATCH] "${text}"`
-        );
-
-        return;
-      }
-
-      console.log(
-        `✓ [REPLY] "${reply}"`
-      );
-
-      await outgoingMessageDelay();
-
-      // Send reply
-      try {
-
-        await msg.reply(reply);
-
-        console.log(
-          '✓ [SENT] Message delivered'
-        );
-
-      } catch (sendError) {
-
+    currentClient.on('auth_failure', msg => {
         console.error(
-          `✗ [SEND_ERROR] ${sendError.message}`
+            '❌ WhatsApp authentication failure:',
+            msg
         );
 
-      }
-
-    } catch (error) {
-
-      console.error(
-        `✗ [MESSAGE_ERROR] ${error.message}`
-      );
-
-    }
-
-  }
-);
-
-// ============================================================
-// EXPRESS
-// ============================================================
-
-app.use(
-  express.json({
-    limit: '2mb'
-  })
-);
-
-app.use(
-  express.static(__dirname)
-);
-
-// ============================================================
-// QR API
-// ============================================================
-
-app.get(
-  '/api/qr',
-  async (req, res) => {
-
-    try {
-
-      // No QR currently available
-      if (!currentQR) {
-
-        return res.send(`
-
-<!doctype html>
-
-<html lang="en">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta http-equiv="refresh" content="10">
-
-<title>WhatsApp Bot Status</title>
-
-<style>
-
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding: 40px;
-  background: #f0f0f0;
-}
-
-.container {
-  background: white;
-  padding: 30px;
-  border-radius: 15px;
-  max-width: 500px;
-  margin: auto;
-  box-shadow: 0 10px 30px rgba(0,0,0,.12);
-}
-
-h1 {
-  color: #25d366;
-}
-
-.badge {
-  display: inline-block;
-  background: #25d366;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-weight: bold;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="container">
-
-<h1>
-${
-  clientReady
-    ? '✅ Bot Connected'
-    : '⏳ Waiting for QR'
-}
-</h1>
-
-<p>
-${
-  clientReady
-    ? 'WhatsApp bot is authenticated and running.'
-    : 'QR code is not available yet. Refresh in a few seconds.'
-}
-</p>
-
-<span class="badge">
-${
-  clientReady
-    ? 'ONLINE'
-    : 'STARTING'
-}
-</span>
-
-</div>
-
-</body>
-
-</html>
-
-`);
-
-      }
-
-      // Generate QR image
-      const qrImage =
-        await qrcode.toDataURL(
-          currentQR
-        );
-
-      res.send(`
-
-<!doctype html>
-
-<html lang="en">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta http-equiv="refresh" content="3">
-
-<title>WhatsApp Bot QR</title>
-
-<style>
-
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding: 30px;
-  background: #f0f0f0;
-}
-
-.container {
-  background: white;
-  padding: 30px;
-  border-radius: 15px;
-  max-width: 500px;
-  margin: auto;
-  box-shadow: 0 10px 30px rgba(0,0,0,.12);
-}
-
-h1 {
-  color: #25d366;
-}
-
-img {
-  width: 100%;
-  max-width: 300px;
-  border: 2px solid #25d366;
-  border-radius: 10px;
-  padding: 10px;
-  box-sizing: border-box;
-}
-
-.info {
-  color: #666;
-  margin-top: 20px;
-}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="container">
-
-<h1>
-📱 Scan QR Code
-</h1>
-
-<p>
-Use WhatsApp on your phone to scan.
-</p>
-
-<img
-  src="${qrImage}"
-  alt="WhatsApp QR Code"
->
-
-<p class="info">
-Page refreshes automatically.
-</p>
-
-</div>
-
-</body>
-
-</html>
-
-`);
-
-    } catch (error) {
-
-      res
-        .status(500)
-        .send(
-          `Error: ${error.message}`
-        );
-
-    }
-
-  }
-);
-
-// ============================================================
-// STATUS API
-// ============================================================
-
-app.get(
-  '/api/status',
-  (req, res) => {
-
-    res.json({
-
-      authenticated:
-        !currentQR &&
-        clientReady,
-
-      botReady:
-        clientReady,
-
-      repliesLoaded:
-        Object.keys(
-          repliesData
-        ).length,
-
-      uptime:
-        process.uptime(),
-
-      restartAttempts
-
+        botReady = false;
     });
 
-  }
-);
+    currentClient.on('error', error => {
+        console.error(
+            '❌ WhatsApp client error:',
+            error
+        );
+    });
 
-// ============================================================
-// SEND MESSAGE API
-// ============================================================
+    registerMessageHandler(currentClient);
+}
 
-app.post(
-  '/api/send',
-  async (req, res) => {
+// Register message handling for initial client
+registerMessageHandler(client);
 
-    const {
-      phone,
-      message
-    } = req.body || {};
+// =========================
+// API: QR
+// =========================
 
-    if (
-      !phone ||
-      !message
-    ) {
-
-      return res
-        .status(400)
-        .json({
-          error:
-            'Phone and message required'
-        });
-
-    }
-
-    if (!clientReady) {
-
-      return res
-        .status(503)
-        .json({
-          error:
-            'Bot not ready'
-        });
-
-    }
-
+app.get('/api/qr', async (req, res) => {
     try {
+        if (!latestQR) {
+            return res.send(`
+                <!DOCTYPE html>
+                <html lang="ar">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>WhatsApp QR</title>
+                    <style>
+                        body {
+                            font-family: Arial;
+                            text-align: center;
+                            padding: 40px;
+                            background: #111;
+                            color: #fff;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h2>
+                        ${
+                            botReady
+                                ? '✅ البوت متصل بالفعل'
+                                : '⏳ لم يتم إنشاء QR Code حتى الآن'
+                        }
+                    </h2>
+                </body>
+                </html>
+            `);
+        }
 
-      // Remove spaces, +, -, etc.
-      const cleanPhone =
-        String(phone)
-          .replace(/[^\d]/g, '');
+        const qrData = await qrcode.toDataURL(latestQR);
 
-      await client.sendMessage(
-        `${cleanPhone}@c.us`,
-        String(message)
-      );
+        res.send(`
+            <!DOCTYPE html>
+            <html lang="ar">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>WhatsApp QR</title>
+                <style>
+                    body {
+                        margin: 0;
+                        padding: 30px;
+                        background: #111;
+                        color: #fff;
+                        font-family: Arial, sans-serif;
+                        text-align: center;
+                    }
 
-      res.json({
+                    img {
+                        width: 300px;
+                        max-width: 90%;
+                        background: #fff;
+                        padding: 15px;
+                        border-radius: 10px;
+                    }
+                </style>
+            </head>
 
+            <body>
+                <h2>📱 امسح QR من واتساب</h2>
+
+                <img src="${qrData}" alt="WhatsApp QR">
+
+                <p>
+                    افتح واتساب ← الأجهزة المرتبطة ← ربط جهاز
+                </p>
+            </body>
+            </html>
+        `);
+
+    } catch (error) {
+        console.error('❌ QR API error:', error.message);
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// =========================
+// API: Status
+// =========================
+
+app.get('/api/status', (req, res) => {
+    res.json({
         success: true,
+        ready: botReady,
+        hasQR: !!latestQR,
+        status: botReady ? 'connected' : 'disconnected'
+    });
+});
 
-        message:
-          'Message sent'
+// =========================
+// API: Send Message
+// =========================
 
-      });
+app.post('/api/send', async (req, res) => {
+    try {
+        const {
+            phone,
+            message
+        } = req.body;
 
-    } catch (error) {
+        if (!phone || !message) {
+            return res.status(400).json({
+                success: false,
+                error: 'phone and message are required'
+            });
+        }
 
-      res
-        .status(500)
-        .json({
-          error:
-            error.message
+        if (!botReady) {
+            return res.status(503).json({
+                success: false,
+                error: 'WhatsApp bot is not ready'
+            });
+        }
+
+        const cleanPhone = String(phone).replace(/\D/g, '');
+
+        if (!cleanPhone) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid phone number'
+            });
+        }
+
+        const chatId = `${cleanPhone}@c.us`;
+
+        const sentMessage = await client.sendMessage(
+            chatId,
+            String(message)
+        );
+
+        res.json({
+            success: true,
+            messageId: sentMessage.id._serialized
         });
 
+    } catch (error) {
+        console.error(
+            '❌ Send message error:',
+            error.message
+        );
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
+});
 
-  }
-);
+// =========================
+// Health
+// =========================
 
-// ============================================================
-// HEALTH CHECK
-// ============================================================
-
-app.get(
-  '/health',
-  (req, res) => {
-
-    res.json({
-
-      status: 'ok',
-
-      bot:
-        clientReady
-          ? 'online'
-          : 'offline'
-
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        whatsapp: botReady ? 'ready' : 'not_ready'
     });
+});
 
-  }
-);
+// =========================
+// Start Server
+// =========================
 
-// ============================================================
-// START EXPRESS SERVER
-// ============================================================
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
 
-const server =
-  app.listen(
-    PORT,
-    () => {
+    console.log('  /api/status - Bot status');
 
-      console.log(
-        `🚀 Server running on port ${PORT}`
-      );
+    console.log('📊 API endpoints:');
+    console.log('  /api/send - Send WhatsApp message');
+    console.log('  /api/qr - QR code page');
+    console.log('  /health - Health check');
+});
 
-      console.log(
-        '📊 API endpoints:'
-      );
-
-      console.log(
-        '   /api/qr - QR code page'
-      );
-
-      console.log(
-        '   /api/status - Bot status'
-      );
-
-      console.log(
-        '   /api/send - Send WhatsApp message'
-      );
-
-      console.log(
-        '   /health - Health check'
-      );
-
-    }
-  );
-
-// ============================================================
-// START WHATSAPP CLIENT
-// ============================================================
+// =========================
+// Initialize WhatsApp
+// =========================
 
 async function startClient() {
+    try {
+        console.log('🔧 Initializing WhatsApp client...');
 
-  try {
+        await client.initialize();
 
-    console.log(
-      '🔧 Initializing WhatsApp client...'
-    );
+    } catch (error) {
+        console.error(
+            '❌ Failed to initialize client:',
+            error.message
+        );
 
-    await client.initialize();
+        botReady = false;
 
-  } catch (error) {
+        setTimeout(() => {
+            console.log('🔄 Trying to initialize again...');
 
-    clientReady = false;
-
-    console.error(
-      `❌ Failed to initialize client: ${error.message}`
-    );
-
-    process.exitCode = 1;
-
-  }
-
+            startClient();
+        }, 10000);
+    }
 }
 
 startClient();
 
-// ============================================================
-// GRACEFUL SHUTDOWN
-// ============================================================
+// =========================
+// Graceful Shutdown
+// =========================
 
 async function shutdown(signal) {
+    console.log(`\n🛑 Received ${signal}`);
 
-  console.log(
-    `\n🛑 ${signal} received. Shutting down...`
-  );
-
-  try {
-
-    await client.destroy();
-
-    console.log(
-      '✓ Client destroyed'
-    );
-
-  } catch (error) {
-
-    console.error(
-      `Error destroying client: ${error.message}`
-    );
-
-  }
-
-  server.close(
-    () => {
-
-      console.log(
-        '✓ HTTP server closed'
-      );
-
-      process.exit(0);
-
+    try {
+        if (client) {
+            await client.destroy();
+        }
+    } catch (error) {
+        console.error(
+            '⚠️ Shutdown error:',
+            error.message
+        );
     }
-  );
 
-  // Force exit if server doesn't close
-  setTimeout(
-    () => process.exit(0),
-    5000
-  ).unref();
-
+    process.exit(0);
 }
 
-process.on(
-  'SIGINT',
-  () => shutdown('SIGINT')
-);
-
-process.on(
-  'SIGTERM',
-  () => shutdown('SIGTERM')
-);
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
