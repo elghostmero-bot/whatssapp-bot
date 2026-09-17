@@ -103,23 +103,72 @@ client.on('message', async msg => {
 app.use(express.json())
 app.use(express.static('.'))
 
-// QR Code endpoint
+// QR Code endpoint - returns HTML page with image
 app.get('/api/qr', async (req, res) => {
   if (!currentQR) {
-    return res.json({ 
-      authenticated: true, 
-      message: 'Bot is already authenticated' 
-    })
+    return res.send(`
+      <html>
+        <head>
+          <title>WhatsApp Bot - Authenticated</title>
+          <style>
+            body { font-family: Arial; text-align: center; padding: 40px; }
+            h1 { color: green; }
+          </style>
+        </head>
+        <body>
+          <h1>✅ Bot is Authenticated</h1>
+          <p>Your WhatsApp bot is already connected and running!</p>
+        </body>
+      </html>
+    `)
   }
   
   try {
     const qrImage = await qrcode.toDataURL(currentQR)
-    res.json({ 
-      qr: qrImage,
-      authenticated: false
-    })
+    res.send(`
+      <html>
+        <head>
+          <title>WhatsApp Bot QR Code</title>
+          <style>
+            body { 
+              font-family: Arial; 
+              text-align: center; 
+              padding: 40px;
+              background: #f0f0f0;
+            }
+            .container {
+              background: white;
+              padding: 30px;
+              border-radius: 10px;
+              max-width: 500px;
+              margin: 0 auto;
+              box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            }
+            img { 
+              max-width: 100%; 
+              height: auto;
+              border: 2px solid #25d366;
+              padding: 10px;
+            }
+            p { color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>📱 WhatsApp Bot QR Code</h1>
+            <p>Scan this QR code with your phone to authenticate:</p>
+            <img src="${qrImage}" alt="QR Code" />
+            <p><small>This page will refresh when authenticated</small></p>
+          </div>
+          <script>
+            // Refresh every 5 seconds to check if authenticated
+            setTimeout(() => location.reload(), 5000)
+          </script>
+        </body>
+      </html>
+    `)
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    res.status(500).send(`Error generating QR: ${error.message}`)
   }
 })
 
@@ -164,4 +213,3 @@ process.on('SIGINT', async () => {
   
   process.exit(0)
 })
-
