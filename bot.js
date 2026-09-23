@@ -157,12 +157,9 @@ function formatNumber(num) {
 // Human Delay
 // =========================
 
-function humanDelay(min = 1500, max = 4000) {
+function humanDelay() {
   return new Promise(resolve =>
-    setTimeout(
-      resolve,
-      min + Math.random() * (max - min)
-    )
+    setTimeout(resolve, 60 * 1000)
   )
 }
 
