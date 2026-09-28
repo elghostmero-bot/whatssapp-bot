@@ -158,8 +158,14 @@ function formatNumber(num) {
 // =========================
 
 function humanDelay() {
+  const min = 30 * 1000
+  const max = 60 * 1000
+
+  const delay =
+    Math.floor(Math.random() * (max - min + 1)) + min
+
   return new Promise(resolve =>
-    setTimeout(resolve, 60 * 1000)
+    setTimeout(resolve, delay)
   )
 }
 
