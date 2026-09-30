@@ -22,7 +22,8 @@ const openai = new OpenAI({
 
 const client = new Client({
   authStrategy: new LocalAuth({
-    clientId: "samia-bot"
+    clientId: "samia-bot",
+    dataPath: "/app/data/.wwebjs_auth"
   }),
 
   authTimeoutMs: 120000,
