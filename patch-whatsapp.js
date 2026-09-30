@@ -11,33 +11,39 @@ const target = path.join(
   "Utils.js"
 );
 
+console.log("WhatsApp patch: checking...");
+console.log("Target:", target);
+
 if (!fs.existsSync(target)) {
-  console.log("WhatsApp patch: Utils.js not found, skipping.");
+  console.log("WhatsApp patch: Utils.js NOT FOUND");
   process.exit(0);
 }
 
 let source = fs.readFileSync(target, "utf8");
 
 if (source.includes("delete message.__x_id;")) {
-  console.log("WhatsApp patch: already applied.");
+  console.log("WhatsApp patch: ALREADY APPLIED");
   process.exit(0);
 }
 
-const marker = `        // Bot's won't reply if canonicalUrl is set (linking)`;
+const marker =
+  "        // Bot's won't reply if canonicalUrl is set (linking)";
 
-const objectEnd = `        };${marker}`;
-
-if (!source.includes(objectEnd)) {
-  console.error("WhatsApp patch: target code pattern not found.");
-  console.error("No changes were made.");
+if (!source.includes(marker)) {
+  console.error("WhatsApp patch: TARGET MARKER NOT FOUND");
   process.exit(1);
 }
 
 source = source.replace(
-  objectEnd,
-  `        };\n        // Fix WhatsApp Web media __x_id collision (Sep 2026)\n        delete message.__x_id;\n${marker}`
+  marker,
+  "        // Fix WhatsApp Web media __x_id collision\n" +
+  "        delete message.__x_id;\n" +
+  marker
 );
 
 fs.writeFileSync(target, source, "utf8");
 
-console.log("WhatsApp patch: media sending fix applied successfully.");
+console.log("========================================");
+console.log("WhatsApp patch: SUCCESS");
+console.log("delete message.__x_id; added");
+console.log("========================================");
