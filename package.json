@@ -4,7 +4,8 @@
   "description": "Samia WhatsApp Bot",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "postinstall": "node patch-whatsapp.js"
   },
   "dependencies": {
     "axios": "^1.13.6",
