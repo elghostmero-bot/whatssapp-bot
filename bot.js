@@ -32,6 +32,7 @@ const client = new Client({
 
   puppeteer: {
     headless: true,
+    protocoltimeout: 180000,
 
     args: [
       "--no-sandbox",
